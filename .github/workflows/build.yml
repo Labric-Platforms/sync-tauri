@@ -58,9 +58,36 @@ jobs:
       - name: install frontend dependencies
         run: pnpm install --frozen-lockfile # change this to npm, pnpm or bun depending on which one you use.
 
+      - name: import Apple Developer certificate
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}           # base64-encoded .p12
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PATH: build.keychain
+
+        run: |
+          CERT_PATH=$RUNNER_TEMP/certificate.p12
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 3600 build.keychain
+          security import "$CERT_PATH" -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          # export the identity hash for tauri-action
+          CERT_ID=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | awk -F'"' '{print $2}')
+          echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          APPLE_SIGNING_IDENTITY: ${{env.APPLE_SIGNING_IDENTITY}}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+
         with:
           tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
           releaseName: 'App v__VERSION__'
@@ -68,3 +95,7 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: clean up macOS keychain
+        if: runner.os == 'macOS'
+        run: security delete-keychain build.keychain
