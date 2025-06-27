@@ -1979,7 +1979,7 @@ dependencies = [
 
 [[package]]
 name = "labric-sync-tauri"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "dirs 5.0.1",
  "machine-uid",
