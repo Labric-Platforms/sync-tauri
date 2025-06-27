@@ -1,0 +1,460 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 54;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0B6127C63DD6DBA7F0B0EB08 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = F65E0BD9A91418EEFADFC02B /* main.mm */; };
+		13EACE6743495F414FABE17E /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 025CD62923A369924AF40D97 /* MetalKit.framework */; };
+		19ACF27F7105327747E95688 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9D2991ED51ED3ED62DA6F2D /* Security.framework */; };
+		23A558175446E3B39EEF3FB4 /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 3F433F6CF407EE18D601D651 /* assets */; };
+		432CCC41DA01EF91896760DB /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA79564A6F19A8E3F089DEA6 /* CoreGraphics.framework */; };
+		7A43C2E9FCA5EFCFA55802B9 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 25FDF28E7874AC3390BF85DE /* LaunchScreen.storyboard */; };
+		7AA938065A4FE6B4F1B22BD4 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A655674D0586F32BCD18FBC0 /* Metal.framework */; };
+		7C1FD96454ED036152D7E261 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AC758361B30CCB4844FA5A16 /* UIKit.framework */; };
+		7C67BA4A9BBA0C4EA31E1BFA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B4987513C9BD0014A98F44D8 /* Assets.xcassets */; };
+		90439C75CF4D60893855E58C /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DF138C3A1F187BEA5B3BEE17 /* libapp.a */; };
+		B518CBFECBF8DBE2D4A70218 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AED2222691E9D570566757E9 /* WebKit.framework */; };
+		FB3DA8F4112324C5B8F25296 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 74A13E0704B3AFA17AE916D7 /* QuartzCore.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		025CD62923A369924AF40D97 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		042BFCBE23ADF7E132CFCC0B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		1A2C7422B06768C3EBC6F3E9 /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
+		25FDF28E7874AC3390BF85DE /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		2760FD1C81E0E762B8F2A04B /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
+		2F502ACDD2CE74B32953399C /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		3F433F6CF407EE18D601D651 /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
+		72F4F6342ED193B7CA83A497 /* labric-sync-tauri_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "labric-sync-tauri_iOS.entitlements"; sourceTree = "<group>"; };
+		74A13E0704B3AFA17AE916D7 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		A655674D0586F32BCD18FBC0 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		A9D2991ED51ED3ED62DA6F2D /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		AC758361B30CCB4844FA5A16 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		ADA16749163E3F5C19D30106 /* labric-sync-tauri_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "labric-sync-tauri_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AED2222691E9D570566757E9 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		B4987513C9BD0014A98F44D8 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		DF138C3A1F187BEA5B3BEE17 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+		F65E0BD9A91418EEFADFC02B /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		FA79564A6F19A8E3F089DEA6 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3AD729B8B6A9C7BB6BE18C24 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				90439C75CF4D60893855E58C /* libapp.a in Frameworks */,
+				432CCC41DA01EF91896760DB /* CoreGraphics.framework in Frameworks */,
+				7AA938065A4FE6B4F1B22BD4 /* Metal.framework in Frameworks */,
+				13EACE6743495F414FABE17E /* MetalKit.framework in Frameworks */,
+				FB3DA8F4112324C5B8F25296 /* QuartzCore.framework in Frameworks */,
+				19ACF27F7105327747E95688 /* Security.framework in Frameworks */,
+				7C1FD96454ED036152D7E261 /* UIKit.framework in Frameworks */,
+				B518CBFECBF8DBE2D4A70218 /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		00DEFC5E42A37F7DD61E5E77 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				ADA16749163E3F5C19D30106 /* labric-sync-tauri_iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		3E32089D1A47303E4D3679BB /* bindings */ = {
+			isa = PBXGroup;
+			children = (
+				1A2C7422B06768C3EBC6F3E9 /* bindings.h */,
+			);
+			path = bindings;
+			sourceTree = "<group>";
+		};
+		83EBFC9117BECD67F96D2AD1 /* Externals */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Externals;
+			sourceTree = "<group>";
+		};
+		8E5DB2CBD7B1B8DAED879A40 /* labric-sync-tauri_iOS */ = {
+			isa = PBXGroup;
+			children = (
+				042BFCBE23ADF7E132CFCC0B /* Info.plist */,
+				72F4F6342ED193B7CA83A497 /* labric-sync-tauri_iOS.entitlements */,
+			);
+			path = "labric-sync-tauri_iOS";
+			sourceTree = "<group>";
+		};
+		95B37070DFAAF909757A90D2 = {
+			isa = PBXGroup;
+			children = (
+				3F433F6CF407EE18D601D651 /* assets */,
+				B4987513C9BD0014A98F44D8 /* Assets.xcassets */,
+				25FDF28E7874AC3390BF85DE /* LaunchScreen.storyboard */,
+				83EBFC9117BECD67F96D2AD1 /* Externals */,
+				8E5DB2CBD7B1B8DAED879A40 /* labric-sync-tauri_iOS */,
+				B1590445E61D731E6246E41B /* Sources */,
+				BA89FA6010A5260E46364B37 /* src */,
+				B46F9A9CB6B47B20657F97E2 /* Frameworks */,
+				00DEFC5E42A37F7DD61E5E77 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B1590445E61D731E6246E41B /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				F28776E99E645E6F80946F1F /* labric-sync-tauri */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		B46F9A9CB6B47B20657F97E2 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				FA79564A6F19A8E3F089DEA6 /* CoreGraphics.framework */,
+				DF138C3A1F187BEA5B3BEE17 /* libapp.a */,
+				A655674D0586F32BCD18FBC0 /* Metal.framework */,
+				025CD62923A369924AF40D97 /* MetalKit.framework */,
+				74A13E0704B3AFA17AE916D7 /* QuartzCore.framework */,
+				A9D2991ED51ED3ED62DA6F2D /* Security.framework */,
+				AC758361B30CCB4844FA5A16 /* UIKit.framework */,
+				AED2222691E9D570566757E9 /* WebKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		BA89FA6010A5260E46364B37 /* src */ = {
+			isa = PBXGroup;
+			children = (
+				2F502ACDD2CE74B32953399C /* lib.rs */,
+				2760FD1C81E0E762B8F2A04B /* main.rs */,
+			);
+			name = src;
+			path = ../../src;
+			sourceTree = "<group>";
+		};
+		F28776E99E645E6F80946F1F /* labric-sync-tauri */ = {
+			isa = PBXGroup;
+			children = (
+				F65E0BD9A91418EEFADFC02B /* main.mm */,
+				3E32089D1A47303E4D3679BB /* bindings */,
+			);
+			path = "labric-sync-tauri";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		47D57C601CEB5053479CE794 /* labric-sync-tauri_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3C4E7441F6AC176A307A3D08 /* Build configuration list for PBXNativeTarget "labric-sync-tauri_iOS" */;
+			buildPhases = (
+				1A0D53395562A40C532E0424 /* Build Rust Code */,
+				27995CD41961CD471D3D327C /* Sources */,
+				12D02F5C2A0E4799F6420254 /* Resources */,
+				3AD729B8B6A9C7BB6BE18C24 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "labric-sync-tauri_iOS";
+			packageProductDependencies = (
+			);
+			productName = "labric-sync-tauri_iOS";
+			productReference = ADA16749163E3F5C19D30106 /* labric-sync-tauri_iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		2A9EFA950B04F481EB464485 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 66A1517A230B0209BAA66FD5 /* Build configuration list for PBXProject "labric-sync-tauri" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 95B37070DFAAF909757A90D2;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 54;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				47D57C601CEB5053479CE794 /* labric-sync-tauri_iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		12D02F5C2A0E4799F6420254 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7C67BA4A9BBA0C4EA31E1BFA /* Assets.xcassets in Resources */,
+				7A43C2E9FCA5EFCFA55802B9 /* LaunchScreen.storyboard in Resources */,
+				23A558175446E3B39EEF3FB4 /* assets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		1A0D53395562A40C532E0424 /* Build Rust Code */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust Code";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a",
+				"$(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "pnpm tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		27995CD41961CD471D3D327C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0B6127C63DD6DBA7F0B0EB08 /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		6992112782A6CB31CB37B0C0 /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = debug;
+		};
+		99DFE79D9873D4E662794C5F /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "labric-sync-tauri_iOS/labric-sync-tauri_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "labric-sync-tauri_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.labric-sync.app";
+				PRODUCT_NAME = "labric-sync-tauri";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = release;
+		};
+		C1E2158EBD3C8357D475747B /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = release;
+		};
+		EA1DB8DDDC090788E1A45CCB /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "labric-sync-tauri_iOS/labric-sync-tauri_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "labric-sync-tauri_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.labric-sync.app";
+				PRODUCT_NAME = "labric-sync-tauri";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3C4E7441F6AC176A307A3D08 /* Build configuration list for PBXNativeTarget "labric-sync-tauri_iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EA1DB8DDDC090788E1A45CCB /* debug */,
+				99DFE79D9873D4E662794C5F /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+		66A1517A230B0209BAA66FD5 /* Build configuration list for PBXProject "labric-sync-tauri" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6992112782A6CB31CB37B0C0 /* debug */,
+				C1E2158EBD3C8357D475747B /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 2A9EFA950B04F481EB464485 /* Project object */;
+}
