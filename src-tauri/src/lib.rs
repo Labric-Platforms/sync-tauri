@@ -1,14 +1,13 @@
+use machine_uid;
+use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
-use tauri::{AppHandle, Emitter, Manager};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use sysinfo::System;
-use sha2::{Sha256, Digest};
-use machine_uid;
-
+use tauri::{AppHandle, Emitter, Manager};
+use uuid::Uuid;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct FileChangeEvent {
@@ -42,15 +41,15 @@ fn greet(name: &str) -> String {
 #[tauri::command]
 fn read_folder_contents(folder_path: String) -> Result<Vec<String>, String> {
     let path = Path::new(&folder_path);
-    
+
     if !path.exists() {
         return Err("Folder does not exist".to_string());
     }
-    
+
     if !path.is_dir() {
         return Err("Path is not a directory".to_string());
     }
-    
+
     match fs::read_dir(path) {
         Ok(entries) => {
             let mut contents = Vec::new();
@@ -94,7 +93,7 @@ async fn start_watching(
         if let Ok(event) = res {
             let event_type = match event.kind {
                 notify::EventKind::Create(_) => "created",
-                notify::EventKind::Modify(_) => "modified", 
+                notify::EventKind::Modify(_) => "modified",
                 notify::EventKind::Remove(_) => "deleted",
                 _ => "other",
             };
@@ -132,13 +131,13 @@ async fn start_watching(
 
 fn capture_initial_contents(folder_path: &str, app_handle: &AppHandle) -> Result<(), String> {
     use std::fs;
-    
+
     fn walk_directory(dir: &Path, app_handle: &AppHandle) -> std::io::Result<()> {
         if dir.is_dir() {
             for entry in fs::read_dir(dir)? {
                 let entry = entry?;
                 let path = entry.path();
-                
+
                 // Emit initial file as "initial" event type
                 let file_change = FileChangeEvent {
                     path: path.to_string_lossy().to_string(),
@@ -148,9 +147,9 @@ fn capture_initial_contents(folder_path: &str, app_handle: &AppHandle) -> Result
                         .unwrap()
                         .as_secs(),
                 };
-                
+
                 let _ = app_handle.emit("file_change", &file_change);
-                
+
                 if path.is_dir() {
                     walk_directory(&path, app_handle)?;
                 }
@@ -158,11 +157,11 @@ fn capture_initial_contents(folder_path: &str, app_handle: &AppHandle) -> Result
         }
         Ok(())
     }
-    
+
     let path = Path::new(folder_path);
     walk_directory(path, app_handle)
         .map_err(|e| format!("Failed to capture initial contents: {}", e))?;
-    
+
     Ok(())
 }
 
@@ -178,18 +177,18 @@ fn get_device_id_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
-    
+
     if !app_data_dir.exists() {
         fs::create_dir_all(&app_data_dir)
             .map_err(|e| format!("Failed to create app directory: {}", e))?;
     }
-    
+
     Ok(app_data_dir.join("device_id.txt"))
 }
 
 fn get_device_id(app_handle: &AppHandle) -> Result<String, String> {
     let id_file_path = get_device_id_path(app_handle)?;
-    
+
     if id_file_path.exists() {
         fs::read_to_string(&id_file_path)
             .map_err(|e| format!("Failed to read device ID file: {}", e))
@@ -202,20 +201,19 @@ fn get_device_id(app_handle: &AppHandle) -> Result<String, String> {
 }
 
 fn get_device_fingerprint() -> Result<String, String> {
-    let machine_id = machine_uid::get()
-        .map_err(|e| format!("Failed to get machine ID: {}", e))?;
-    
+    let machine_id = machine_uid::get().map_err(|e| format!("Failed to get machine ID: {}", e))?;
+
     let mut hasher = Sha256::new();
     hasher.update(machine_id.as_bytes());
     let result = hasher.finalize();
-    
+
     Ok(format!("{:x}", result))
 }
 
 #[tauri::command]
 fn get_hostname() -> Result<String, String> {
     use std::env;
-    
+
     // Try different environment variables for hostname
     if let Ok(hostname) = env::var("HOSTNAME") {
         return Ok(hostname);
@@ -223,11 +221,11 @@ fn get_hostname() -> Result<String, String> {
     if let Ok(hostname) = env::var("COMPUTERNAME") {
         return Ok(hostname);
     }
-    
+
     // Try using sysinfo
     let mut sys = System::new();
     sys.refresh_all();
-    
+
     // Fallback to "Unknown"
     Ok("Unknown".to_string())
 }
@@ -236,15 +234,15 @@ fn get_hostname() -> Result<String, String> {
 fn get_device_info(app_handle: AppHandle) -> Result<DeviceInfo, String> {
     let mut sys = System::new_all();
     sys.refresh_all();
-    
+
     let device_id = get_device_id(&app_handle)?;
     let device_fingerprint = get_device_fingerprint()?;
-    
+
     // Get hostname from environment variables
     let hostname = std::env::var("HOSTNAME")
         .or_else(|_| std::env::var("COMPUTERNAME"))
         .unwrap_or_else(|_| "Unknown".to_string());
-    
+
     let platform = if cfg!(target_os = "windows") {
         "Windows"
     } else if cfg!(target_os = "macos") {
@@ -254,7 +252,7 @@ fn get_device_info(app_handle: AppHandle) -> Result<DeviceInfo, String> {
     } else {
         "Unknown"
     };
-    
+
     let arch = if cfg!(target_arch = "x86_64") {
         "x64"
     } else if cfg!(target_arch = "aarch64") {
@@ -264,7 +262,7 @@ fn get_device_info(app_handle: AppHandle) -> Result<DeviceInfo, String> {
     } else {
         std::env::consts::ARCH
     };
-    
+
     // Get OS version using standard library
     let release = if cfg!(target_os = "macos") {
         std::process::Command::new("sw_vers")
@@ -281,13 +279,20 @@ fn get_device_info(app_handle: AppHandle) -> Result<DeviceInfo, String> {
         std::fs::read_to_string("/etc/os-release")
             .ok()
             .and_then(|content| {
-                content.lines()
+                content
+                    .lines()
                     .find(|line| line.starts_with("PRETTY_NAME="))
-                    .map(|line| line.split('=').nth(1).unwrap_or("Unknown").trim_matches('"').to_string())
+                    .map(|line| {
+                        line.split('=')
+                            .nth(1)
+                            .unwrap_or("Unknown")
+                            .trim_matches('"')
+                            .to_string()
+                    })
             })
             .unwrap_or_else(|| "Linux".to_string())
     };
-    
+
     Ok(DeviceInfo {
         hostname,
         platform: platform.to_string(),
@@ -304,16 +309,18 @@ fn get_device_info(app_handle: AppHandle) -> Result<DeviceInfo, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let watcher_state: WatcherState = Arc::new(Mutex::new(None));
-    
+
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(watcher_state)
         .invoke_handler(tauri::generate_handler![
-            greet, 
-            read_folder_contents, 
-            start_watching, 
+            greet,
+            read_folder_contents,
+            start_watching,
             stop_watching,
             get_hostname,
             get_device_info
