@@ -16,6 +16,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+import { Toaster } from "@/components/ui/sonner";
+import { toast } from "sonner";
+import { ThemeProvider } from 'next-themes'
+
 interface FileChangeEvent {
   path: string;
   event_type: string;
@@ -90,24 +94,56 @@ function App() {
           let downloaded = 0;
           let contentLength = 0;
           // alternatively we could also call update.download() and update.install() separately
-          await update.downloadAndInstall((event) => {
-            switch (event.event) {
-              case 'Started':
-                contentLength = event.data.contentLength ?? 0;
-                console.log(`started downloading ${event.data.contentLength ?? 0} bytes`);
-                break;
-              case 'Progress':
-                downloaded += event.data.chunkLength;
-                console.log(`downloaded ${downloaded} from ${contentLength}`);
-                break;
-              case 'Finished':
-                console.log('download finished');
-                break;
+          await update.download(
+            (event) => {
+              switch (event.event) {
+                case 'Started':
+                  contentLength = event.data.contentLength ?? 0;
+                  console.log(`started downloading ${event.data.contentLength ?? 0} bytes`);
+                  break;
+                case 'Progress':
+                  downloaded += event.data.chunkLength;
+                  console.log(`downloaded ${downloaded} from ${contentLength}`);
+                  break;
+                case 'Finished':
+                  console.log('download finished');
+                  break;
+              }
             }
-          });
+          );
 
-          console.log('update installed');
-          await relaunch();
+          console.log('update downloaded');
+          
+          toast(`New Update v${update.version}`, {
+            id: "update-notification",
+            description: "Restart to install the update",
+            action: {
+              label: "Restart",
+              onClick: async () => {
+                try {
+                  toast.loading("Installing update...", { id: 'installing' });
+                  await update.install();
+                  console.log('update installed');
+                  toast.dismiss('installing');
+                  await relaunch();
+                } catch (error) {
+                  console.error('Failed to install update:', error);
+                  toast.dismiss('installing');
+                  toast.error("Failed to install update");
+                }
+              },
+            },
+            cancel: {
+              label: "Later",
+              onClick: () => {
+                console.log("Update postponed");
+              },
+            },
+            duration: Infinity,
+          })
+          // wait for 15 seconds
+          await new Promise(resolve => setTimeout(resolve, 15000));
+          // await relaunch();
         }
       } catch (error) {
         console.error('Failed to check for updates:', error);
@@ -187,7 +223,9 @@ function App() {
   }
 
   return (
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
     <main className="container mx-auto p-6 max-w-4xl">
+      <Toaster />
       <h1 className="text-3xl font-bold mb-6">File Watcher</h1>
 
       <div className="space-y-6">
@@ -205,8 +243,8 @@ function App() {
             </Button>
 
             {selectedFolder && (
-              <div className="p-3 bg-gray-100 rounded-md">
-                <p className="text-sm text-gray-600 mb-1">Selected Folder:</p>
+              <div className="p-3 bg-muted rounded-md">
+                <p className="text-sm text-muted-foreground mb-1">Selected Folder:</p>
                 <p className="font-mono text-sm break-all">{selectedFolder}</p>
               </div>
             )}
@@ -238,7 +276,7 @@ function App() {
             </CardHeader>
             <CardContent>
               {fileChanges.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">
+                <p className="text-muted-foreground text-center py-8">
                   Loading folder contents...
                 </p>
               ) : (
@@ -247,7 +285,7 @@ function App() {
                     {fileChanges.map((change, index) => (
                       <div
                         key={`${change.path}-${change.timestamp}-${index}`}
-                        className="flex items-center justify-between py-2 px-1 hover:bg-gray-50 rounded-sm"
+                        className="flex items-center justify-between py-2 px-1 hover:bg-muted rounded-sm"
                       >
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">
@@ -263,7 +301,7 @@ function App() {
                           >
                             {change.event_type}
                           </Badge>
-                          <span className="text-xs text-gray-400 whitespace-nowrap">
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
                             {formatTimestamp(change.timestamp)}
                           </span>
                         </div>
@@ -286,67 +324,67 @@ function App() {
           </CardHeader>
           <CardContent>
             {!deviceInfo ? (
-              <p className="text-gray-500">Loading device information...</p>
+              <p className="text-muted-foreground">Loading device information...</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                 <div className="space-y-3">
                   <div>
-                    <span className="font-medium text-gray-600">
+                    <span className="font-medium text-muted-foreground">
                       Device Name:
                     </span>
-                    <p className="text-gray-900">{deviceInfo.hostname}</p>
+                    <p className="">{deviceInfo.hostname}</p>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-600">Platform:</span>
-                    <p className="text-gray-900">{deviceInfo.platform}</p>
+                    <span className="font-medium text-muted-foreground">Platform:</span>
+                    <p className="">{deviceInfo.platform}</p>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-600">
+                    <span className="font-medium text-muted-foreground">
                       OS Version:
                     </span>
-                    <p className="text-gray-900">{deviceInfo.release}</p>
+                    <p className="">{deviceInfo.release}</p>
                   </div>
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <span className="font-medium text-gray-600">
+                    <span className="font-medium text-muted-foreground">
                       Architecture:
                     </span>
-                    <p className="text-gray-900">{deviceInfo.arch}</p>
+                    <p className="">{deviceInfo.arch}</p>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-600">
+                    <span className="font-medium text-muted-foreground">
                       CPU Cores:
                     </span>
-                    <p className="text-gray-900">{deviceInfo.cpus}</p>
+                    <p className="">{deviceInfo.cpus}</p>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-600">Memory:</span>
-                    <p className="text-gray-900">
+                    <span className="font-medium text-muted-foreground">Memory:</span>
+                    <p className="">
                       {deviceInfo.total_memory} GB
                     </p>
                   </div>
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <span className="font-medium text-gray-600">
+                    <span className="font-medium text-muted-foreground">
                       Device ID:
                     </span>
-                    <p className="text-gray-900 font-mono text-xs break-all">
+                    <p className=" font-mono text-xs break-all">
                       {deviceInfo.device_id}
                     </p>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-600">
+                    <span className="font-medium text-muted-foreground">
                       Fingerprint:
                     </span>
-                    <p className="text-gray-900 font-mono text-xs break-all">
+                    <p className=" font-mono text-xs break-all">
                       {deviceInfo.device_fingerprint.substring(0, 16)}...
                     </p>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-600">Runtime:</span>
-                    <p className="text-gray-900">Tauri + React</p>
+                    <span className="font-medium text-muted-foreground">Runtime:</span>
+                    <p className="">Tauri + React</p>
                   </div>
                 </div>
               </div>
@@ -355,6 +393,7 @@ function App() {
         </Card>
       </div>
     </main>
+    </ThemeProvider>
   );
 }
 
