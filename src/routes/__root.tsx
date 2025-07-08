@@ -1,5 +1,5 @@
 import { createRootRoute, Outlet, Link } from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
+// import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { useAppUpdater } from '@/hooks/useAppUpdater'
 
 export const Route = createRootRoute({
@@ -21,7 +21,7 @@ export const Route = createRootRoute({
         <Outlet />
 
         {/* devtools are auto-stripped in prod builds */}
-        {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />}
+        {/* {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />} */}
       </>
     )
   },
