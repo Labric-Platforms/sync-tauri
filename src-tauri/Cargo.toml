@@ -1,6 +1,6 @@
 [package]
 name = "labric-sync-tauri"
-version = "1.4.0"
+version = "0.1.4"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
