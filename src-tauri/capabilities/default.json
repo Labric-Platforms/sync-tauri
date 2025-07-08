@@ -7,6 +7,17 @@
     "core:default",
     "opener:default",
     "dialog:default",
-    "fs:default"
+    "fs:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "http://localhost:8000" },
+        { "url": "http://localhost:8000/*" },
+        { "url": "https://localhost:8000" },
+        { "url": "https://localhost:8000/*" },
+        { "url": "https://*.labric.co" },
+        { "url": "https://*.labric.co/*" }
+      ]
+    }
   ]
 }
