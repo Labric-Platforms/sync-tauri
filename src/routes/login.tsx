@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { invoke } from '@tauri-apps/api/core'
 import logo from '@/assets/logo.svg'
 import { openUrl } from "@tauri-apps/plugin-opener"
+import { fetch } from '@tauri-apps/plugin-http';
 import { DeviceInfo } from '@/types'
 
 export const Route = createFileRoute('/login')({
@@ -17,8 +18,8 @@ interface CodeDigitProps {
 
 const CodeDigit = ({ char, isLoading }: CodeDigitProps) => (
   <span
-    className={`inline-flex w-8 h-10 items-center justify-center border-2 rounded-lg font-mono text-xl ${
-      isLoading ? "bg-muted-foreground animate-pulse" : ""
+    className={`inline-flex w-8 h-10 items-center justify-center border-2 border-muted rounded-lg font-mono text-xl ${
+      isLoading ? "bg-muted animate-pulse" : ""
     }`}
   >
     {!isLoading && char}
@@ -34,7 +35,7 @@ const CodeDisplay = ({ code, isLoading = false }: { code?: string; isLoading?: b
           <CodeDigit key={i} char={char} isLoading={isLoading} />
         ))}
       </span>
-      <span className="inline-block w-2 h-2 rounded-full bg-gray-300" />
+      <span className="inline-block px-1 font-mono">—</span>
       <span className="inline-flex gap-2">
         {displayCode.slice(3).split("").map((char, i) => (
           <CodeDigit key={i} char={char} isLoading={isLoading} />
@@ -48,6 +49,8 @@ function RouteComponent() {
   const [enrollmentCode, setEnrollmentCode] = useState<string | null>(null);
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
   const [isLoadingCode, setIsLoadingCode] = useState(true);
+  const [isEnrolled, setIsEnrolled] = useState(false);
+  const [organizationName, setOrganizationName] = useState<string | null>(null);
 
   const generateRandomCode = () => {
     const code = Math.floor(Math.random() * 900000) + 100000; // Generate 6-digit number
@@ -57,27 +60,70 @@ function RouteComponent() {
   const fetchEnrollmentCode = async (deviceInfo: DeviceInfo) => {
     setIsLoadingCode(true);
     try {
-      // TODO: Replace with actual API call using device info
-      // const response = await fetch('/api/enrollment-code', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(deviceInfo)
-      // });
-      // const data = await response.json();
-      // setEnrollmentCode(data.code);
+      const response = await fetch('http://localhost:8000/api/sync/get_code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hostname: deviceInfo.hostname,
+          platform: deviceInfo.platform,
+          release: deviceInfo.release,
+          arch: deviceInfo.arch,
+          cpus: deviceInfo.cpus,
+          total_memory: deviceInfo.total_memory,
+          os_type: deviceInfo.os_type,
+          device_id: deviceInfo.device_id,
+          device_fingerprint: deviceInfo.device_fingerprint
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
       
-      // For now, simulate API delay and generate random code
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const newCode = generateRandomCode();
-      setEnrollmentCode(newCode);
-      console.log('Generated code for device:', deviceInfo);
+      if (data.success && data.otp_code) {
+        setEnrollmentCode(data.otp_code);
+        console.log('Retrieved enrollment code for device:', deviceInfo);
+        console.log('Code expires at:', data.expires_at);
+      } else {
+        throw new Error('Invalid response format or unsuccessful request');
+      }
     } catch (error) {
       console.error('Failed to fetch enrollment code:', error);
-      toast.error('Failed to generate enrollment code');
+      toast.error('Failed to fetch enrollment code from server');
       // Fallback to random code
       setEnrollmentCode(generateRandomCode());
     } finally {
       setIsLoadingCode(false);
+    }
+  };
+
+  const pollEnrollment = async (deviceInfo: DeviceInfo) => {
+    try {
+      const response = await fetch('http://localhost:8000/api/sync/poll_enrollment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_fingerprint: deviceInfo.device_fingerprint
+        })
+      });
+
+      if (!response.ok) {
+        console.error('Failed to poll enrollment status:', response.status);
+        return;
+      }
+
+      const data = await response.json();
+      console.log('Poll response:', data);
+      
+      if (data.success && data.enrolled) {
+        setIsEnrolled(true);
+        setOrganizationName(data.organization_name || 'Unknown Organization');
+        console.log('Device enrolled:', data);
+      }
+    } catch (error) {
+      console.error('Error polling enrollment status:', error);
     }
   };
 
@@ -125,7 +171,7 @@ function RouteComponent() {
 
   useEffect(() => {
     // Set up interval to generate new code every 30 seconds
-    if (!deviceInfo) return;
+    if (!deviceInfo || isEnrolled) return;
 
     const interval = setInterval(async () => {
       await fetchEnrollmentCode(deviceInfo);
@@ -133,7 +179,18 @@ function RouteComponent() {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [deviceInfo]);
+  }, [deviceInfo, isEnrolled]);
+
+  useEffect(() => {
+    // Set up polling for enrollment status every second
+    if (!deviceInfo || isEnrolled) return;
+
+    const interval = setInterval(async () => {
+      await pollEnrollment(deviceInfo);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [deviceInfo, isEnrolled]);
 
   return (
     <div className="flex flex-col items-center justify-center h-svh p-6 gap-6">
@@ -142,17 +199,26 @@ function RouteComponent() {
         <h1 className="text-2xl font-semibold">Labric Sync</h1>
       </div>
       <div className="w-full max-w-sm flex flex-col items-center justify-center gap-4">
-        <CodeDisplay code={enrollmentCode || undefined} isLoading={isLoadingCode} />
+        {isEnrolled ? (
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-green-600 mb-2">Device Enrolled!</h2>
+            <p className="text-lg">{organizationName}</p>
+          </div>
+        ) : (
+          <CodeDisplay code={enrollmentCode || undefined} isLoading={isLoadingCode} />
+        )}
       </div>
-      <h2 className="text-md text-muted-foreground mb-4">
-        Enter this code at{" "}
-        <button
-          onClick={handleOpenEnrollPage}
-          className="text-blue-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
-        >
-          labric.co/enroll
-        </button>
-      </h2>
+      {!isEnrolled && (
+        <h2 className="text-md text-muted-foreground mb-4">
+          Enter this code at{" "}
+          <button
+            onClick={handleOpenEnrollPage}
+            className="text-blue-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
+          >
+            labric.co/enroll
+          </button>
+        </h2>
+      )}
     </div>
   );
 }

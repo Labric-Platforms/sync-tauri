@@ -1,6 +1,9 @@
 import { createRootRoute, Outlet, Link } from '@tanstack/react-router'
 // import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { useAppUpdater } from '@/hooks/useAppUpdater'
+import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from 'next-themes'
+
 
 export const Route = createRootRoute({
   component: () => {
@@ -8,11 +11,11 @@ export const Route = createRootRoute({
     useAppUpdater();
 
     return (
-      <>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
         {/* simple header */}
         <header className="border-b px-4 py-3">
           <nav className="flex gap-4 text-sm">
-            <Link to="/"    className="[&.active]:font-semibold">Home</Link>
+            <Link to="/" className="[&.active]:font-semibold">Home</Link>
             <Link to="/login" className="[&.active]:font-semibold">Login</Link>
           </nav>
         </header>
@@ -22,7 +25,8 @@ export const Route = createRootRoute({
 
         {/* devtools are auto-stripped in prod builds */}
         {/* {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />} */}
-      </>
+        <Toaster />
+      </ThemeProvider>
     )
   },
 })

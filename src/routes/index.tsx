@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import FileWatcher from '@/components/FileWatcher'
+import Simple from '@/components/Simple'
 
 export const Route = createFileRoute('/')({
-  component: () => <FileWatcher />,
+  component: () => <Simple />,
 })
