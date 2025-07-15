@@ -2224,7 +2224,7 @@ dependencies = [
 
 [[package]]
 name = "labric-sync-tauri"
-version = "0.1.3"
+version = "0.1.5"
 dependencies = [
  "dirs 5.0.1",
  "env_logger",
