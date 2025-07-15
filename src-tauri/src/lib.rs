@@ -2,12 +2,20 @@ use machine_uid;
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use sysinfo::System;
 use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
+
+mod upload;
+use upload::{
+    add_to_upload_queue_sync, clear_upload_queue, get_queue_size, get_upload_config,
+    get_upload_progress, process_upload_queue, set_upload_config, trigger_manual_upload,
+    UploadConfig, UploadConfigState, UploadProgress, UploadProgressState, UploadQueue,
+};
 
 #[derive(Clone, Serialize, Deserialize)]
 struct FileChangeEvent {
@@ -76,6 +84,8 @@ async fn start_watching(
     folder_path: String,
     app_handle: AppHandle,
     watcher_state: tauri::State<'_, WatcherState>,
+    upload_queue: tauri::State<'_, UploadQueue>,
+    upload_config: tauri::State<'_, UploadConfigState>,
 ) -> Result<String, String> {
     // Stop any existing watcher
     {
@@ -87,6 +97,9 @@ async fn start_watching(
     capture_initial_contents(&folder_path, &app_handle)?;
 
     let app_handle_clone = app_handle.clone();
+    let upload_queue_clone = upload_queue.inner().clone();
+    let upload_config_clone = upload_config.inner().clone();
+    let folder_path_clone = folder_path.clone();
 
     // Create file watcher
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
@@ -110,6 +123,17 @@ async fn start_watching(
 
                 // Send to frontend
                 let _ = app_handle_clone.emit("file_change", &file_change);
+
+                // Queue for upload if it's a created or modified file
+                if event_type == "created" || event_type == "modified" {
+                    let file_path = path.to_string_lossy().to_string();
+                    let base_path = folder_path_clone.clone();
+                    let queue = upload_queue_clone.clone();
+                    let config = upload_config_clone.clone();
+
+                    // Add to queue synchronously (async work will be done by background processor)
+                    add_to_upload_queue_sync(file_path, base_path, &queue, &config);
+                }
             }
         }
     })
@@ -308,23 +332,70 @@ fn get_device_info(app_handle: AppHandle) -> Result<DeviceInfo, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let watcher_state: WatcherState = Arc::new(Mutex::new(None));
+    // Initialize logger for debugging upload issues
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    tauri::Builder::default()
+    let watcher_state: WatcherState = Arc::new(Mutex::new(None));
+    let upload_queue: UploadQueue = Arc::new(Mutex::new(VecDeque::new()));
+    let upload_config: UploadConfigState = Arc::new(Mutex::new(UploadConfig::default()));
+    let upload_progress: UploadProgressState = Arc::new(Mutex::new(UploadProgress {
+        total_queued: 0,
+        total_uploaded: 0,
+        total_failed: 0,
+        current_uploading: None,
+    }));
+
+    let app = tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(watcher_state)
+        .manage(upload_queue.clone())
+        .manage(upload_config.clone())
+        .manage(upload_progress.clone())
         .invoke_handler(tauri::generate_handler![
             greet,
             read_folder_contents,
             start_watching,
             stop_watching,
             get_hostname,
-            get_device_info
+            get_device_info,
+            get_upload_config,
+            set_upload_config,
+            get_upload_progress,
+            clear_upload_queue,
+            get_queue_size,
+            trigger_manual_upload
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .setup(move |app| {
+            // Start the upload processor in the background
+            let upload_queue_clone = upload_queue.clone();
+            let upload_config_clone = upload_config.clone();
+            let upload_progress_clone = upload_progress.clone();
+            let app_handle = app.handle().clone();
+
+            tauri::async_runtime::spawn(async move {
+                process_upload_queue(
+                    upload_queue_clone,
+                    upload_config_clone,
+                    upload_progress_clone,
+                    app_handle,
+                )
+                .await;
+            });
+
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|_app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { .. } = event {
+            // Cleanup can be done here if needed
+        }
+    });
 }
