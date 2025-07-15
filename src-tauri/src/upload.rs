@@ -19,7 +19,7 @@ pub struct UploadConfig {
 impl Default for UploadConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             server_url: "http://localhost:8000".to_string(),
             ignored_patterns: vec![
                 "*.tmp".to_string(),

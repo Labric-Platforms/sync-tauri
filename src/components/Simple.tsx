@@ -30,6 +30,7 @@ export default function Simple() {
   useEffect(() => {
     // Listen for file change events from Tauri
     const unlisten = listen("file_change", (event) => {
+      console.log("file_change", event);
       const fileChange = event.payload as FileChangeEvent;
       setFileChanges((prev) => [fileChange, ...prev].slice(0, 100)); // Keep only latest 100 changes
     });
@@ -176,7 +177,7 @@ export default function Simple() {
             </Button>
 
             {/* Recent Directories */}
-            {recentDirs.length > 0 && (
+            {recentDirs.length > 0 && !selectedFolder && (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">Recent folders:</p>
                 <div className="flex flex-col gap-1 items-start">
@@ -279,7 +280,10 @@ export default function Simple() {
           </div>
         </div>
         <div className="flex items-center space-x-4">
-          <span>{fileChanges.length} changes detected</span>
+          <span>{(() => {
+            const actualChanges = fileChanges.filter(change => change.event_type !== 'initial').length;
+            return actualChanges >= 100 ? '100+' : actualChanges;
+          })()} changes detected</span>
           <Tooltip>
             <TooltipTrigger asChild>
               <div>
