@@ -1,9 +1,15 @@
-import { createRootRoute, Outlet, Link } from '@tanstack/react-router'
+import { createRootRoute, Outlet } from "@tanstack/react-router";
 // import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
-import { useAppUpdater } from '@/hooks/useAppUpdater'
+import { useAppUpdater } from "@/hooks/useAppUpdater";
 import { Toaster } from "@/components/ui/sonner";
-import { ThemeProvider } from 'next-themes'
+import { ThemeProvider } from "next-themes";
+import { ClerkProvider } from "@clerk/clerk-react";
 
+const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+if (!clerkPubKey) {
+  throw new Error("Missing Publishable Key");
+}
 
 export const Route = createRootRoute({
   component: () => {
@@ -11,22 +17,16 @@ export const Route = createRootRoute({
     useAppUpdater();
 
     return (
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-        {/* simple header */}
-        <header className="border-b px-4 py-3">
-          <nav className="flex gap-4 text-sm">
-            <Link to="/" className="[&.active]:font-semibold">Home</Link>
-            <Link to="/login" className="[&.active]:font-semibold">Login</Link>
-          </nav>
-        </header>
+      <ClerkProvider publishableKey={clerkPubKey}>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          {/* child routes render here */}
+          <Outlet />
 
-        {/* child routes render here */}
-        <Outlet />
-
-        {/* devtools are auto-stripped in prod builds */}
-        {/* {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />} */}
-        <Toaster />
-      </ThemeProvider>
-    )
+          {/* devtools are auto-stripped in prod builds */}
+          {/* {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />} */}
+          <Toaster />
+        </ThemeProvider>
+      </ClerkProvider>
+    );
   },
-})
+});

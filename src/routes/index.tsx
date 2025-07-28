@@ -1,6 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router'
-import Simple from '@/components/Simple'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/')({
-  component: () => <Simple />,
+  beforeLoad: () => {
+    throw redirect({
+      to: '/dashboard'
+    })
+  },
 })
