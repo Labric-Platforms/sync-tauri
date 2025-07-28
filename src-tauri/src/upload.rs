@@ -28,7 +28,7 @@ impl Default for UploadConfig {
                 "node_modules/**".to_string(),
                 ".DS_Store".to_string(),
             ],
-            upload_delay_ms: 2000,     // 2 seconds delay 
+            upload_delay_ms: 2000,     // 2 seconds delay
             max_concurrent_uploads: 5, // Default to 5 concurrent uploads
         }
     }

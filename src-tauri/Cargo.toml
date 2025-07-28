@@ -36,9 +36,9 @@ reqwest = { version = "0.11", features = ["json"] }
 mime_guess = "2.0"
 glob = "0.3"
 log = "0.4"
-env_logger = "0.10"
 tauri-plugin-http = "2"
 tauri-plugin-store = "2"
+tauri-plugin-log = "2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"

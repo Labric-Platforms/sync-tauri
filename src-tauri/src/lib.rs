@@ -332,9 +332,6 @@ fn get_device_info(app_handle: AppHandle) -> Result<DeviceInfo, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize logger for debugging upload issues
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-
     let watcher_state: WatcherState = Arc::new(Mutex::new(None));
     let upload_queue: UploadQueue = Arc::new(Mutex::new(VecDeque::new()));
     let upload_config: UploadConfigState = Arc::new(Mutex::new(UploadConfig::default()));
@@ -346,6 +343,7 @@ pub fn run() {
     }));
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_process::init())
