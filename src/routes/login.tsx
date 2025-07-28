@@ -191,17 +191,13 @@ function RouteComponent() {
               
               // Get user organization info from Clerk session
               try {
-                const token = await clerk.session?.getToken();
                 const user = clerk.user;
-                console.log('Clerk user after sign-in:', user);
                 
                 // Store organization info in Tauri store
                 if (user?.organizationMemberships && user.organizationMemberships.length > 0) {
                   const orgMembership = user.organizationMemberships[0];
                   const orgId = orgMembership.organization.id;
                   const orgName = orgMembership.organization.name;
-                  
-                  console.log('Found organization from Clerk:', { orgId, orgName });
                   
                   try {
                     const store = await Store.load('app-store.json');
