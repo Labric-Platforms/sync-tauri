@@ -1,6 +1,6 @@
 
 import { LogOut } from "lucide-react";
-import { useClerk, useOrganization } from "@clerk/clerk-react";
+import { useRouter } from "@tanstack/react-router";
 
 import {
   DropdownMenu,
@@ -11,30 +11,45 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { clearToken, getToken, CustomJwtPayload } from "@/lib/store";
+import { useEffect, useState } from "react";
 
 export function OrganizationButton() {
-  const { signOut } = useClerk();
-  const { organization } = useOrganization();
+  const [organization, setOrganization] = useState<CustomJwtPayload | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    const fetchOrganization = async () => {
+      const organization = await getToken();
+      setOrganization(organization);
+    };
+    fetchOrganization();
+  }, []);
+
+  const handleSignOut = async () => {
+    await clearToken();
+    router.navigate({ to: "/login" });
+  };
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="focus:outline-none">
           <Avatar className="h-8 w-8 rounded-full">
             <AvatarImage
-              src={organization?.imageUrl}
-              alt={organization?.name}
+              src={organization?.org_image_url}
+              alt={organization?.org_name}
             />
             <AvatarFallback className="rounded-full">
-              {organization?.name?.charAt(0)}
+              {organization?.org_name?.charAt(0)}
             </AvatarFallback>
           </Avatar>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>
-          {organization?.name}
+          {organization?.org_name}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut()}>
+        <DropdownMenuItem onClick={handleSignOut}>
           <LogOut className="h-4 w-4 mr-2" />
           Sign out
         </DropdownMenuItem>
