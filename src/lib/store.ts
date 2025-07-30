@@ -47,8 +47,16 @@ export async function setToken(token: string) {
 export async function getToken(): Promise<CustomJwtPayload | null> {
   const token = await get<string | null>(TOKEN_KEY, null);
   if (!token) return null;
-  const decoded = jwtDecode<CustomJwtPayload>(token);
-  return decoded;
+  
+  try {
+    const decoded = jwtDecode<CustomJwtPayload>(token);
+    return decoded;
+  } catch (error) {
+    console.error("Error decoding token:", error);
+    // Clear invalid token
+    await clearToken();
+    return null;
+  }
 }
 
 export async function clearToken() {

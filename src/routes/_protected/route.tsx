@@ -24,11 +24,14 @@ function ProtectedLayout() {
           setIsAuthenticated(true);
         } else {
           // No token or token is expired
+          console.log("Token invalid or expired, redirecting to login");
+          setIsAuthenticated(false);
           router.navigate({ to: "/login" });
           return;
         }
       } catch (error) {
         console.error("Error checking auth:", error);
+        setIsAuthenticated(false);
         router.navigate({ to: "/login" });
         return;
       }

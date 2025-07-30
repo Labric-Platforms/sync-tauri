@@ -99,8 +99,11 @@ function Login() {
   useEffect(() => {
     const checkAuth = async () => {
       const token = await getToken();
-      if (token) {
-        navigate({ to: '/' });
+      if (token && token.exp && token.exp > Date.now() / 1000) {
+        console.log("Login page - valid token found, navigating to dashboard");
+        navigate({ to: '/dashboard' });
+      } else {
+        console.log("Login page - no valid token, staying on login");
       }
     };
     checkAuth();
