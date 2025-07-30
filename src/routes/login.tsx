@@ -4,14 +4,13 @@ import { useNavigate } from '@tanstack/react-router'
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { fetch } from '@tauri-apps/plugin-http';
-import { useSignIn, useUser, useClerk } from '@clerk/clerk-react'
-import { Store } from '@tauri-apps/plugin-store'
 import { toast } from 'sonner'
 import { DeviceInfo } from '@/types'
 import logo from '@/assets/logo.svg'
+import { getToken, setToken, getOrganizationId, setOrganizationId } from '@/lib/store'
 
 export const Route = createFileRoute('/login')({
-  component: RouteComponent,
+  component: Login,
 })
 
 interface CodeDigitProps {
@@ -48,37 +47,69 @@ const CodeDisplay = ({ code, isLoading = false }: { code?: string; isLoading?: b
   );
 };
 
-function RouteComponent() {
+const EnrolledDisplay = () => {
+  const [orgName, setOrgName] = useState<string>('Unknown Organization');
+
+  useEffect(() => {
+    const loadOrgName = async () => {
+      try {
+        const token = await getToken();
+        if (token?.org_name) {
+          setOrgName(token.org_name);
+        }
+      } catch (error) {
+        console.error('Error loading organization name:', error);
+      }
+    };
+    loadOrgName();
+  }, []);
+
+  return (
+    <div className="text-center">
+      <h2 className="text-xl font-semibold text-green-600 mb-2">Device Enrolled!</h2>
+      <p className="text-lg">{orgName}</p>
+    </div>
+  );
+};
+
+function Login() {
   const [enrollmentCode, setEnrollmentCode] = useState<string | null>(null);
-  const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
   const [isLoadingCode, setIsLoadingCode] = useState(true);
+  const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
   const [isEnrolled, setIsEnrolled] = useState(false);
-  const [organizationName, setOrganizationName] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
-  
-  // Clerk hooks for authentication
-  const { signIn, setActive } = useSignIn();
-  const { user } = useUser();
-  const clerk = useClerk();
+
   const navigate = useNavigate();
 
-  // If user is already signed in, redirect to home
-  useEffect(() => {
-    if (user) {
-      navigate({ to: '/' });
-    }
-  }, [user, navigate]);
+  const apiCall = (endpoint: string, body: any, token?: string) => 
+    fetch(`${import.meta.env.VITE_SERVER_URL}/api/sync/${endpoint}`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` })
+      },
+      body: JSON.stringify(body)
+    });
 
-  const generateRandomCode = () => {
-    const code = Math.floor(Math.random() * 900000) + 100000; // Generate 6-digit number
-    return code.toString();
+  const handleError = (error: any, message: string, toastId: string) => {
+    console.error(message, error);
+    toast.error(message, { id: toastId });
   };
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = await getToken();
+      if (token) {
+        navigate({ to: '/' });
+      }
+    };
+    checkAuth();
+  }, [navigate]);
 
   const fetchEnrollmentCode = async (deviceInfo: DeviceInfo) => {
     setIsLoadingCode(true);
     try {
       // Check if org ID is in the store
-      let organizationId: string | null = null;
       const requestBody: any = {
         hostname: deviceInfo.hostname,
         platform: deviceInfo.platform,
@@ -92,32 +123,16 @@ function RouteComponent() {
       };
       
       try {
-        const store = await Store.load('app-store.json');
-        const storedOrgId = await store.get('organization_id');
-        console.log('Retrieved from store - org ID:', storedOrgId, 'Type:', typeof storedOrgId, 'Truthy:', !!storedOrgId);
-        
-        if (storedOrgId && typeof storedOrgId === 'string') {
-          organizationId = storedOrgId;
+        const organizationId = await getOrganizationId();
+        if (organizationId) {
           requestBody.org_id = organizationId;
-          console.log('Found valid organization ID in store:', organizationId);
-        } else {
-          console.log('Organization ID in store is null/undefined or invalid type:', storedOrgId);
-          // Let's also check if it exists but is a different type
-          if (storedOrgId !== null && storedOrgId !== undefined) {
-            console.log('Attempting to convert to string:', String(storedOrgId));
-            organizationId = String(storedOrgId);
-            requestBody.org_id = organizationId;
-          }
+          console.log('Found organization ID in store:', organizationId);
         }
       } catch (error) {
-        console.log('No organization ID found in store or store not accessible:', error);
+        console.log('Error retrieving organization ID:', error);
       }
 
-      const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/api/sync/get_code`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
-      });
+      const response = await apiCall('get_code', requestBody);
 
       if (!response.ok) { 
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -133,10 +148,7 @@ function RouteComponent() {
         throw new Error('Invalid response format or unsuccessful request');
       }
     } catch (error) {
-      console.error('Failed to fetch enrollment code:', error);
-      toast.error('Failed to fetch enrollment code from server', {id: 'enrollment-code-error'});
-      // Fallback to random code
-      setEnrollmentCode(generateRandomCode());
+      handleError(error, 'Failed to fetch enrollment code from server', 'enrollment-code-error');
     } finally {
       setIsLoadingCode(false);
     }
@@ -144,12 +156,8 @@ function RouteComponent() {
 
   const pollEnrollment = async (deviceInfo: DeviceInfo) => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/api/sync/poll_enrollment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          device_fingerprint: deviceInfo.device_fingerprint
-        })
+      const response = await apiCall('poll_enrollment', {
+        device_fingerprint: deviceInfo.device_fingerprint
       });
 
       if (!response.ok) {
@@ -162,96 +170,45 @@ function RouteComponent() {
       
       if (data.success && data.enrolled) {
         setIsEnrolled(true);
-        setOrganizationName(data.organization_name || 'Unknown Organization');
         console.log('Device enrolled:', data);
         
-        
-        console.log('Signin token:', data.signin_token);
-        console.log("signin", signIn)
-        console.log("setActive", setActive)
-        console.log("isSigningIn", isSigningIn)
-        
-        // Check if we received a sign-in token and Clerk is properly loaded
-        if (data.signin_token && !isSigningIn && signIn && setActive) {
+        // Handle token-based authentication
+        if (data.signin_token && !isSigningIn) {
           setIsSigningIn(true);
           toast.info('Signing you in...', { id: 'signing-in' });
           
           try {
-            // Create the SignIn with the token using Clerk
-            const signInAttempt = await signIn.create({
-              strategy: 'ticket',
-              ticket: data.signin_token,
-            });
-
-            // If the sign-in was successful, set the session to active
-            if (signInAttempt.status === 'complete') {
-              await setActive({
-                session: signInAttempt.createdSessionId,
-              });
-              
-              // Get user organization info from Clerk session
-              try {
-                const user = clerk.user;
-                
-                // Store organization info in Tauri store
-                if (user?.organizationMemberships && user.organizationMemberships.length > 0) {
-                  const orgMembership = user.organizationMemberships[0];
-                  const orgId = orgMembership.organization.id;
-                  const orgName = orgMembership.organization.name;
-                  
-                  try {
-                    const store = await Store.load('app-store.json');
-                    await store.set('organization_id', orgId);
-                    await store.set('organization_name', orgName);
-                    await store.save();
-                    
-                    console.log('Successfully stored organization info:', { orgId, orgName });
-                  } catch (storeError) {
-                    console.error('Failed to store organization info:', storeError);
-                  }
-                } else {
-                  console.warn('No organization memberships found for user');
-                }
-              } catch (orgError) {
-                console.error('Error retrieving organization info:', orgError);
-              }
-              
-              // Call finish_enrollment API with device fingerprint
-              try {
-                // get the token
-                const token = await clerk.session?.getToken();
-                console.log("Calling finish_enrollment")
-                const finishResponse = await fetch(`${import.meta.env.VITE_SERVER_URL}/api/sync/finish_enrollment`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                  body: JSON.stringify({
-                    device_fingerprint: deviceInfo.device_fingerprint
-                  })
-                });
-                console.log("finishResponse", finishResponse)
-
-                if (!finishResponse.ok) {
-                  console.warn('Failed to complete enrollment finalization:', finishResponse.status);
-                }
-              } catch (finishError) {
-                console.warn('Error calling finish_enrollment:', finishError);
-              }
-              
-              toast.success('Successfully signed in!', { id: 'sign-in-success' });
-              // Navigation will happen via the useEffect above when user state updates
-            } else {
-              console.error('Sign-in attempt not complete:', signInAttempt);
-              toast.error('Sign-in incomplete. Please try again.', { id: 'sign-in-incomplete' });
-              setIsSigningIn(false);
+            // Store the token and organization ID
+            await setToken(data.signin_token);
+            
+            if (data.organization_id) {
+              await setOrganizationId(data.organization_id);
+              console.log('Successfully stored organization info');
             }
+            
+            // Call finish_enrollment API with device fingerprint
+            try {
+              console.log("Calling finish_enrollment", data.signin_token);
+              const finishResponse = await apiCall('finish_enrollment', {
+                device_fingerprint: deviceInfo.device_fingerprint
+              }, data.signin_token);
+
+              if (!finishResponse.ok) {
+                console.warn('Failed to complete enrollment finalization:', finishResponse.status);
+              }
+            } catch (finishError) {
+              console.warn('Error calling finish_enrollment:', finishError);
+            }
+            
+            toast.success('Successfully signed in!', { id: 'sign-in-success' });
+            
+            // Navigate to dashboard
+            navigate({ to: '/dashboard' });
+            
           } catch (error) {
-            console.error('Error signing in with token:', error);
-            toast.error('Failed to sign in with token', { id: 'sign-in-error' });
+            handleError(error, 'Failed to sign in with token', 'sign-in-error');
             setIsSigningIn(false);
           }
-        } else if (data.signin_token && !signIn) {
-          console.error('Clerk signIn not available - Clerk may not be properly initialized');
-          toast.error('Authentication not ready. Please refresh the page.', { id: 'clerk-not-ready' });
         }
       }
     } catch (error) {
@@ -262,11 +219,8 @@ function RouteComponent() {
   const handleOpenEnrollPage = async () => {
     try {
         await openUrl("https://platform.labric.co/enroll");
-      // For now, just show a toast since we don't have the Tauri API setup
-      toast.info('Would open labric.co/enroll', {id: 'enrollment-page-info'});
     } catch (err) {
-      console.error('Failed to open enrollment page:', err);
-      toast.error('Failed to open enrollment page', {id: 'enrollment-page-error'});
+      handleError(err, 'Failed to open enrollment page', 'enrollment-page-error');
     }
   };
 
@@ -279,8 +233,7 @@ function RouteComponent() {
         // Generate initial code with device info
         await fetchEnrollmentCode(info);
       } catch (error) {
-        console.error("Failed to get device info:", error);
-        toast.error('Failed to get device information', {id: 'device-info-error'});
+        handleError(error, 'Failed to get device information', 'device-info-error');
         // Fallback device info
         const fallbackInfo: DeviceInfo = {
           hostname: "Unknown",
@@ -315,30 +268,14 @@ function RouteComponent() {
 
   useEffect(() => {
     // Set up polling for enrollment status every second
-    if (!deviceInfo || isEnrolled || !clerk.loaded) return;
+    if (!deviceInfo || isEnrolled) return;
 
     const interval = setInterval(async () => {
       await pollEnrollment(deviceInfo);
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [deviceInfo, isEnrolled, clerk.loaded]);
-
-  // Show loading state while Clerk is initializing
-  if (!clerk.loaded) {
-    return (
-      <div className="flex flex-col items-center justify-center h-svh p-6 gap-6">
-        <div className="flex items-center justify-center gap-3">
-          <img src={logo} alt="Labric Sync" className="w-10 h-10" />
-          <h1 className="text-2xl font-semibold">Labric Sync</h1>
-        </div>
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-          <p className="text-muted-foreground">Initializing...</p>
-        </div>
-      </div>
-    );
-  }
+  }, [deviceInfo, isEnrolled]);
 
   return (
     <div className="flex flex-col items-center justify-center h-svh p-6 gap-6">
@@ -353,10 +290,7 @@ function RouteComponent() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
           </div>
         ) : isEnrolled ? (
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-green-600 mb-2">Device Enrolled!</h2>
-            <p className="text-lg">{organizationName}</p>
-          </div>
+          <EnrolledDisplay />
         ) : (
           <CodeDisplay code={enrollmentCode || undefined} isLoading={isLoadingCode} />
         )}
