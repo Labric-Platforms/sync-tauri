@@ -183,7 +183,7 @@ function UploadSettingsDialog({ children }: UploadSettingsDialogProps) {
                     type="text"
                     value={serverUrlInput}
                     onChange={(e) => setServerUrlInput(e.target.value)}
-                    placeholder="http://localhost:8000"
+                    placeholder="http://localhost:3000"
                     className="flex-1 px-3 py-2 border rounded-md text-sm"
                   />
                   <Button onClick={handleUpdateServerUrl} size="sm">

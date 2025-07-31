@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_store::StoreExt;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
 
@@ -234,9 +235,24 @@ async fn upload_file(
         presigned_url, upload_item.relative_path
     );
 
-    let response = client
+    // Get token from store
+    let token = {
+        let store = app_handle.store("settings.json")
+            .map_err(|e| format!("Failed to access store: {}", e))?;
+        store.get("token").unwrap_or_default()
+    };
+
+    let mut request_builder = client
         .post(&presigned_url)
-        .json(&presigned_request)
+        .json(&presigned_request);
+
+    // Add Authorization header if token exists
+    if let Some(token_str) = token.as_str() {
+        request_builder = request_builder.header("Authorization", format!("Bearer {}", token_str));
+        debug!("Added Bearer token to presigned URL request");
+    }
+
+    let response = request_builder
         .send()
         .await
         .map_err(|e| {
