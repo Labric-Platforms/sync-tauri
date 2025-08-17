@@ -78,28 +78,45 @@ jobs:
           CERT_ID=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | awk -F'"' '{print $2}')
           echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
 
-      # ---------- Windows signing via DigiCert KeyLocker (KSP) ----------
+      # --- Windows only ---
       - name: Install DigiCert client tools (KSP/SMCTL)
         if: runner.os == 'Windows'
         uses: digicert/ssm-code-signing@v1.1.0
 
-      - name: Configure DigiCert env & client-auth cert
+      - name: Write DigiCert client-auth cert (.p12)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Write client-auth .p12 from base64 and export env for SMCTL
-          [IO.File]::WriteAllBytes('D:\Certificate_pkcs12.p12', [Convert]::FromBase64String('${{ secrets.SM_CLIENT_CERT_FILE_B64 }}'))
-          "SM_HOST=${{ secrets.SM_HOST }}" | Out-File -Append -FilePath $env:GITHUB_ENV
-          "SM_API_KEY=${{ secrets.SM_API_KEY }}" | Out-File -Append -FilePath $env:GITHUB_ENV
-          "SM_CLIENT_CERT_FILE=D:\Certificate_pkcs12.p12" | Out-File -Append -FilePath $env:GITHUB_ENV
-          "SM_CLIENT_CERT_PASSWORD=${{ secrets.SM_CLIENT_CERT_PASSWORD }}" | Out-File -Append -FilePath $env:GITHUB_ENV
+          [IO.File]::WriteAllBytes('D:\sm_client_auth.p12',
+            [Convert]::FromBase64String('${{ secrets.SM_CLIENT_CERT_FILE_B64 }}'))
 
-      - name: Register KSP & sync cert (user store)
+      - name: Configure env & sync KeyLocker cert
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          SM_HOST: ${{ secrets.SM_HOST }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_FILE: D:\sm_client_auth.p12
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+          KEYPAIR_ALIAS: ${{ secrets.KEYPAIR_ALIAS }}
+        run: |
+          "SM_HOST=$env:SM_HOST" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "SM_API_KEY=$env:SM_API_KEY" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "SM_CLIENT_CERT_FILE=$env:SM_CLIENT_CERT_FILE" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "SM_CLIENT_CERT_PASSWORD=$env:SM_CLIENT_CERT_PASSWORD" | Out-File -Append -FilePath $env:GITHUB_ENV
+          # Bring the cert into CurrentUser\My with a clean sync:
+          if ($env:KEYPAIR_ALIAS) {
+            smctl windows certsync --keypair-alias "$env:KEYPAIR_ALIAS" --store user --reset
+          } else {
+            smctl windows certsync --store user --signable --reset
+          }
+
+      - name: Diagnostics (temporary)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          smctl windows ksp register
-          smctl windows certsync --store user
+          smctl healthcheck --tools
+          smctl keypair ls
 
       - uses: tauri-apps/tauri-action@v0
         env:
