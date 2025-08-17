@@ -23,7 +23,17 @@
   },
   "bundle": {
     "windows": {
-      "signCommand": "smctl sign --fingerprint b75c98e57155c621d8e945864332ec5e41046318 --input \"%1\" --digalg SHA256 --tool signtool --verbose"
+      "signCommand": {
+        "cmd": "signtool",
+        "args": [
+          "sign",
+          "/sha1", "b75c98e57155c621d8e945864332ec5e41046318",
+          "/tr", "http://timestamp.digicert.com",
+          "/td", "SHA256",
+          "/fd", "SHA256",
+          "%1"
+        ]
+      }
     },
     "active": true,
     "targets": "all",
