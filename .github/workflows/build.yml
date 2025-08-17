@@ -99,6 +99,14 @@ jobs:
           "SM_CLIENT_CERT_FILE=$env:SM_CLIENT_CERT_FILE" | Out-File -Append -FilePath $env:GITHUB_ENV
           "SM_CLIENT_CERT_PASSWORD=$env:SM_CLIENT_CERT_PASSWORD" | Out-File -Append -FilePath $env:GITHUB_ENV
 
+
+      - name: Verify client-auth P12 opens (password check)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          certutil -p "$env:SM_CLIENT_CERT_PASSWORD" -dump "D:\sm_client_auth.p12" | Out-Host
+
+
       - name: Locate smctl and pkcs11properties.cfg
         if: runner.os == 'Windows'
         shell: pwsh
