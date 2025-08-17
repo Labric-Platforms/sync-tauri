@@ -1,11 +1,8 @@
-name: "publish"
+name: publish
 
 on:
   push:
-    branches:
-      - main
-
-# This workflow will trigger on each push to the `release` branch to create or update a GitHub release, build your app, and upload the artifacts to the release.
+    branches: [main]
 
 jobs:
   publish-tauri:
@@ -15,58 +12,56 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-latest" # for Arm based macs (M1 and above).
+          - platform: macos-latest
             args: "--target aarch64-apple-darwin --bundles app"
-          - platform: "macos-latest" # for Intel based macs.
+          - platform: macos-latest
             args: "--target x86_64-apple-darwin --bundles app"
-          - platform: "ubuntu-22.04" # for Tauri v1 you could replace this with ubuntu-20.04.
+          - platform: ubuntu-22.04
             args: ""
-          - platform: "windows-latest"
+          - platform: windows-latest
             args: ""
-
     runs-on: ${{ matrix.platform }}
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: setup pnpm
+      - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
           run_install: false
 
-      - name: setup node
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: "pnpm"
+          cache: pnpm
           cache-dependency-path: "**/pnpm-lock.yaml"
 
-      - name: install Rust stable
+      - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Those targets are only used on macos runners so it's in an `if` to slightly speed up windows and linux builds.
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - name: install dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04' # This must match the platform value defined above.
+      - name: Linux deps (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-        # webkitgtk 4.0 is for Tauri v1 - webkitgtk 4.1 is for Tauri v2.
-        # You can remove the one that doesn't apply to your app to speed up the workflow a bit.
+          sudo apt-get install -y \
+            libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev \
+            libappindicator3-dev librsvg2-dev patchelf
 
-      - name: install frontend dependencies
-        run: pnpm install --frozen-lockfile # change this to npm, pnpm or bun depending on which one you use.
+      - name: Install frontend deps
+        run: pnpm install --frozen-lockfile
 
-      - name: import Apple Developer certificate
+      # ---------- macOS signing ----------
+      - name: Import Apple Developer certificate
         if: runner.os == 'macOS'
         env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }} # base64-encoded .p12
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}            # base64 .p12
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PATH: build.keychain
-
         run: |
-          CERT_PATH=$RUNNER_TEMP/certificate.p12
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
           echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
@@ -74,11 +69,11 @@ jobs:
           security set-keychain-settings -lut 3600 build.keychain
           security import "$CERT_PATH" -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-          # export the identity hash for tauri-action
+
           CERT_ID=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | awk -F'"' '{print $2}')
           echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
 
-      # --- Windows only ---
+      # ---------- Windows signing (DigiCert KeyLocker + SignTool) ----------
       - name: Install DigiCert client tools (KSP/SMCTL)
         if: runner.os == 'Windows'
         uses: digicert/ssm-code-signing@v1.1.0
@@ -90,7 +85,7 @@ jobs:
           [IO.File]::WriteAllBytes('D:\sm_client_auth.p12',
             [Convert]::FromBase64String('${{ secrets.SM_CLIENT_CERT_FILE_B64 }}'))
 
-      - name: Configure env & sync KeyLocker cert
+      - name: Configure DigiCert env
         if: runner.os == 'Windows'
         shell: pwsh
         env:
@@ -98,27 +93,29 @@ jobs:
           SM_API_KEY: ${{ secrets.SM_API_KEY }}
           SM_CLIENT_CERT_FILE: D:\sm_client_auth.p12
           SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
-          KEYPAIR_ALIAS: ${{ secrets.KEYPAIR_ALIAS }}
         run: |
           "SM_HOST=$env:SM_HOST" | Out-File -Append -FilePath $env:GITHUB_ENV
           "SM_API_KEY=$env:SM_API_KEY" | Out-File -Append -FilePath $env:GITHUB_ENV
           "SM_CLIENT_CERT_FILE=$env:SM_CLIENT_CERT_FILE" | Out-File -Append -FilePath $env:GITHUB_ENV
           "SM_CLIENT_CERT_PASSWORD=$env:SM_CLIENT_CERT_PASSWORD" | Out-File -Append -FilePath $env:GITHUB_ENV
-          # Bring the cert into CurrentUser\My with a clean sync:
-          if ($env:KEYPAIR_ALIAS) {
-            smctl windows certsync --keypair-alias "$env:KEYPAIR_ALIAS" --store user --reset
-          } else {
-            smctl windows certsync --store user --signable --reset
-          }
 
-     # Bring the DigiCert certificate into the CurrentUser\My store (fresh each run)
-      - name: Sync KeyLocker cert to user store
+      - name: Sync KeyLocker cert to CurrentUser\My (by alias) & verify
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          KEYPAIR_ALIAS: ${{ secrets.KEYPAIR_ALIAS }}   # REQUIRED: set this in repo secrets
         run: |
-          smctl windows certsync --store user --reset
+          if ([string]::IsNullOrWhiteSpace($env:KEYPAIR_ALIAS)) { Write-Error "KEYPAIR_ALIAS secret not set"; exit 1 }
 
-      # Make sure the newest Windows SDK SignTool is discoverable
+          # Fresh sync of the exact keypair
+          smctl windows certsync --keypair-alias "$env:KEYPAIR_ALIAS" --store user --reset
+
+          # Confirm the thumbprint we use in tauri.windows.conf.json is present and has a private key
+          $thumb = 'b75c98e57155c621d8e945864332ec5e41046318'
+          $c = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Thumbprint -ieq $thumb }
+          if (-not $c) { Write-Error "Thumbprint $thumb not found in CurrentUser\My after certsync"; exit 1 }
+          if (-not $c.HasPrivateKey) { Write-Error "Cert $thumb is present but has NO private key"; exit 1 }
+
       - name: Ensure SignTool on PATH
         if: runner.os == 'Windows'
         shell: pwsh
@@ -126,46 +123,39 @@ jobs:
           $binRoot = 'C:\Program Files (x86)\Windows Kits\10\bin'
           $latest = Get-ChildItem $binRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1
           if ($latest) { "$($latest.FullName)\x64" | Out-File -Append -FilePath $env:GITHUB_PATH }
-
-        
-
-      - name: Diagnostics (temporary)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
           smctl healthcheck --tools
-          smctl keypair ls
 
-      - uses: tauri-apps/tauri-action@v0
+      # ---------- Build & release ----------
+      - name: Build & release with Tauri
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          APPLE_SIGNING_IDENTITY: ${{env.APPLE_SIGNING_IDENTITY}}
+          # macOS signing & notarization
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
 
+          # Tauri updater signature (if used)
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
         with:
-          tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
+          tagName: app-v__VERSION__
           releaseName: "App v__VERSION__"
           releaseBody: "See the assets to download this version and install."
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
 
-      - name: clean up macOS keychain
+      - name: Cleanup macOS keychain
         if: runner.os == 'macOS'
         run: security delete-keychain build.keychain
 
-      - name: Verify signatures (optional)
+      - name: Verify Windows signatures (optional)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           signtool verify /pa /v "src-tauri/target/release/labric-sync-tauri.exe"
           signtool verify /pa /v "src-tauri/target/release/bundle/msi/Labric Sync_0.1.5_x64_en-US.msi"
           signtool verify /pa /v "src-tauri/target/release/bundle/nsis/Labric Sync_0.1.5_x64-setup.exe"
-      

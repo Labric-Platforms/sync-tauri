@@ -24,13 +24,14 @@
   "bundle": {
     "windows": {
       "signCommand": {
-        "cmd": "signtool",
+        "cmd": "C:\\hostedtoolcache\\windows\\signtool\\latest\\x64\\signtool.exe",
         "args": [
           "sign",
           "/sha1", "b75c98e57155c621d8e945864332ec5e41046318",
           "/tr", "http://timestamp.digicert.com",
           "/td", "SHA256",
           "/fd", "SHA256",
+          "/debug", "/v",
           "%1"
         ]
       }
