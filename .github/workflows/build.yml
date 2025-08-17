@@ -78,6 +78,36 @@ jobs:
           CERT_ID=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | awk -F'"' '{print $2}')
           echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
 
+      - name: Install DigiCert client tools
+        if: runner.os == 'Windows'
+        uses: digicert/ssm-code-signing@v1.1.0  # latest as of Jul 2025
+
+      - name: Write client-auth certificate (.p12)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "${{ secrets.SM_CLIENT_CERT_FILE_B64 }}" | base64 --decode > /d/Certificate_pkcs12.p12
+
+      - name: Configure SMCTL environment
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          echo "SM_HOST=${{ secrets.SM_HOST }}" >> "$GITHUB_ENV"
+          echo "SM_API_KEY=${{ secrets.SM_API_KEY }}" >> "$GITHUB_ENV"
+          echo "SM_CLIENT_CERT_FILE=D:\\Certificate_pkcs12.p12" >> "$GITHUB_ENV"
+          echo "SM_CLIENT_CERT_PASSWORD=${{ secrets.SM_CLIENT_CERT_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "KEYPAIR_ALIAS=${{ secrets.KEYPAIR_ALIAS }}" >> "$GITHUB_ENV"
+          echo "SM_CODE_SIGNING_CERT_SHA1_HASH=${{ secrets.SM_CODE_SIGNING_CERT_SHA1_HASH }}" >> "$GITHUB_ENV"
+
+      - name: Register KSP and sync certificate
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          KEYPAIR_ALIAS: ${{ secrets.KEYPAIR_ALIAS }}
+        run: |
+          smctl windows ksp register
+          smctl windows certsync --keypair-alias $env:KEYPAIR_ALIAS
+
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

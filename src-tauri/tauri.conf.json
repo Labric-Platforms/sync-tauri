@@ -22,6 +22,11 @@
     }
   },
   "bundle": {
+    "windows": {
+      "certificateThumbprint": "b75c98e57155c621d8e945864332ec5e41046318",
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com"
+    },
     "active": true,
     "targets": "all",
     "icon": [
