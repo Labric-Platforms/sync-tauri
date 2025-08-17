@@ -111,6 +111,13 @@ jobs:
           smctl keypair ls --filter alias=$env:KEYPAIR_ALIAS
           certutil -store -user My | findstr /I /C:"$env:KEYPAIR_ALIAS"
 
+      - name: Point Tauri to DigiCert signtool (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "TAURI_WINDOWS_SIGNTOOL_PATH=C:\hostedtoolcache\windows\signtool\latest\x64\signtool.exe" |
+            Out-File -Append -FilePath $env:GITHUB_ENV
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
