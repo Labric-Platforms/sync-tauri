@@ -99,6 +99,32 @@ jobs:
           "SM_CLIENT_CERT_FILE=$env:SM_CLIENT_CERT_FILE" | Out-File -Append -FilePath $env:GITHUB_ENV
           "SM_CLIENT_CERT_PASSWORD=$env:SM_CLIENT_CERT_PASSWORD" | Out-File -Append -FilePath $env:GITHUB_ENV
 
+      - name: Locate smctl and pkcs11properties.cfg
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Show where smctl resolves from (should print a path)
+          $smctl = (Get-Command smctl -ErrorAction Stop).Source
+          Write-Host "smctl at: $smctl"
+          # Put its directory on PATH for absolute certainty
+          $smctlDir = Split-Path $smctl -Parent
+          "$smctlDir" | Out-File -Append -FilePath $env:GITHUB_PATH
+
+          # Find the pkcs11properties.cfg that DigiCert action dropped
+          $cfg = Get-ChildItem -Path $env:TEMP -Recurse -Filter pkcs11properties.cfg -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $cfg) { Write-Error "pkcs11properties.cfg not found under $env:TEMP"; exit 1 }
+          Write-Host "Found pkcs11properties.cfg at: $($cfg.FullName)"
+
+          # Copy to a stable location we can hardcode in tauri.conf.json
+          Copy-Item $cfg.FullName -Destination 'D:\pkcs11properties.cfg' -Force
+          'SMCTL_CONFIG_FILE=D:\pkcs11properties.cfg' | Out-File -Append -FilePath $env:GITHUB_ENV
+
+      - name: KeyLocker healthcheck & list keypairs
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          smctl healthcheck
+          smctl keypair list
 
       # ---------- Build & release ----------
       - name: Build & release with Tauri
