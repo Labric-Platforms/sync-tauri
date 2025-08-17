@@ -78,7 +78,7 @@ jobs:
           CERT_ID=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | awk -F'"' '{print $2}')
           echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
 
-      - name: Install DigiCert client tools
+      - name: Install DigiCert client tools 
         if: runner.os == 'Windows'
         uses: digicert/ssm-code-signing@v1.1.0  # latest as of Jul 2025
 
