@@ -114,20 +114,16 @@ jobs:
           if (-not $c) { Write-Error "Thumbprint $thumb not found in CurrentUser\My after certsync"; exit 1 }
           if (-not $c.HasPrivateKey) { Write-Error "Cert $thumb is present but has NO private key"; exit 1 }
 
-      - name: Ensure SignTool on PATH & sanity-check
+      - name: Ensure SignTool on PATH & spawn check
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Prefer the newest Windows SDK bin\x64 folder
+          # Prefer newest Windows SDK bin\x64 folder (Tauri won't need PATH since we use absolute cmd, but this is handy for the verify step)
           $binRoot = 'C:\Program Files (x86)\Windows Kits\10\bin'
           $latest = Get-ChildItem $binRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1
           if ($latest) { "$($latest.FullName)\x64" | Out-File -Append -FilePath $env:GITHUB_PATH }
-
-          # Show mapped tools so we know the path is good
           smctl healthcheck --tools
-
-          # Prove we can launch signtool (spawning check)
-          signtool /? | Out-Null
+          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe" /? | Out-Null
 
       # ---------- Build & release ----------
       - name: Build & release with Tauri
@@ -160,6 +156,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          signtool verify /pa /v "src-tauri/target/release/labric-sync-tauri.exe"
-          signtool verify /pa /v "src-tauri/target/release/bundle/msi/Labric Sync_0.1.5_x64_en-US.msi"
-          signtool verify /pa /v "src-tauri/target/release/bundle/nsis/Labric Sync_0.1.5_x64-setup.exe"
+          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe" verify /pa /v "src-tauri/target/release/labric-sync-tauri.exe"
+          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe" verify /pa /v "src-tauri/target/release/bundle/msi/Labric Sync_0.1.5_x64_en-US.msi"
+          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe" verify /pa /v "src-tauri/target/release/bundle/nsis/Labric Sync_0.1.5_x64-setup.exe"
