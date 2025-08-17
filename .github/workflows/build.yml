@@ -111,6 +111,18 @@ jobs:
             smctl windows certsync --store user --signable --reset
           }
 
+      - name: Ensure SignTool on PATH & check tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Put the newest Windows SDK bin\x64 on PATH
+          $binRoot = 'C:\Program Files (x86)\Windows Kits\10\bin'
+          $latest = Get-ChildItem $binRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if ($null -ne $latest) { "$($latest.FullName)\x64" | Out-File -Append -FilePath $env:GITHUB_PATH }
+          # Quick check that SMCTL sees required tools
+          smctl healthcheck --tools
+        
+
       - name: Diagnostics (temporary)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -142,3 +154,9 @@ jobs:
       - name: clean up macOS keychain
         if: runner.os == 'macOS'
         run: security delete-keychain build.keychain
+
+      - name: Verify signatures (optional)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          smctl sign verify --fingerprint b75c98e57155c621d8e945864332ec5e41046318 --input "src-tauri/target/release/bundle"
