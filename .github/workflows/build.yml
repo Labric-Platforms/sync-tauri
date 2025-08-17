@@ -78,38 +78,28 @@ jobs:
           CERT_ID=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | awk -F'"' '{print $2}')
           echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
 
-      # --- Windows only ---
-      - name: Install DigiCert client tools
+      # ---------- Windows signing via DigiCert KeyLocker (KSP) ----------
+      - name: Install DigiCert client tools (KSP/SMCTL)
         if: runner.os == 'Windows'
         uses: digicert/ssm-code-signing@v1.1.0
 
-      - name: Write DigiCert client-auth cert (.p12)
+      - name: Configure DigiCert env & client-auth cert
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          [IO.File]::WriteAllBytes('D:\Certificate_pkcs12.p12',
-            [Convert]::FromBase64String('${{ secrets.SM_CLIENT_CERT_FILE_B64 }}'))
-
-      - name: Configure SMCTL environment
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
+          # Write client-auth .p12 from base64 and export env for SMCTL
+          [IO.File]::WriteAllBytes('D:\Certificate_pkcs12.p12', [Convert]::FromBase64String('${{ secrets.SM_CLIENT_CERT_FILE_B64 }}'))
           "SM_HOST=${{ secrets.SM_HOST }}" | Out-File -Append -FilePath $env:GITHUB_ENV
           "SM_API_KEY=${{ secrets.SM_API_KEY }}" | Out-File -Append -FilePath $env:GITHUB_ENV
           "SM_CLIENT_CERT_FILE=D:\Certificate_pkcs12.p12" | Out-File -Append -FilePath $env:GITHUB_ENV
           "SM_CLIENT_CERT_PASSWORD=${{ secrets.SM_CLIENT_CERT_PASSWORD }}" | Out-File -Append -FilePath $env:GITHUB_ENV
-          "KEYPAIR_ALIAS=${{ secrets.KEYPAIR_ALIAS }}" | Out-File -Append -FilePath $env:GITHUB_ENV
 
-      - name: Register KSP & sync cert to user store
+      - name: Register KSP & sync cert (user store)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           smctl windows ksp register
-          smctl windows certsync --keypair-alias "$env:KEYPAIR_ALIAS" --store user --reset
-          # (Optional diagnostics while testing)
-          smctl healthcheck --tools
-          smctl keypair ls --filter alias=$env:KEYPAIR_ALIAS
-          certutil -store -user My | findstr /I /C:"$env:KEYPAIR_ALIAS"
+          smctl windows certsync --store user
 
       - uses: tauri-apps/tauri-action@v0
         env:
