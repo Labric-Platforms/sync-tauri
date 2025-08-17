@@ -58,7 +58,7 @@ jobs:
       - name: Import Apple Developer certificate
         if: runner.os == 'macOS'
         env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}            # base64 .p12
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           CERT_PATH="$RUNNER_TEMP/certificate.p12"
@@ -103,27 +103,31 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         env:
-          KEYPAIR_ALIAS: ${{ secrets.KEYPAIR_ALIAS }}   # REQUIRED: set this in repo secrets
+          KEYPAIR_ALIAS: ${{ secrets.KEYPAIR_ALIAS }}   # set this secret from DigiCert portal (Keypairs)
         run: |
           if ([string]::IsNullOrWhiteSpace($env:KEYPAIR_ALIAS)) { Write-Error "KEYPAIR_ALIAS secret not set"; exit 1 }
 
-          # Fresh sync of the exact keypair
           smctl windows certsync --keypair-alias "$env:KEYPAIR_ALIAS" --store user --reset
 
-          # Confirm the thumbprint we use in tauri.windows.conf.json is present and has a private key
           $thumb = 'b75c98e57155c621d8e945864332ec5e41046318'
           $c = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Thumbprint -ieq $thumb }
           if (-not $c) { Write-Error "Thumbprint $thumb not found in CurrentUser\My after certsync"; exit 1 }
           if (-not $c.HasPrivateKey) { Write-Error "Cert $thumb is present but has NO private key"; exit 1 }
 
-      - name: Ensure SignTool on PATH
+      - name: Ensure SignTool on PATH & sanity-check
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          # Prefer the newest Windows SDK bin\x64 folder
           $binRoot = 'C:\Program Files (x86)\Windows Kits\10\bin'
           $latest = Get-ChildItem $binRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1
           if ($latest) { "$($latest.FullName)\x64" | Out-File -Append -FilePath $env:GITHUB_PATH }
+
+          # Show mapped tools so we know the path is good
           smctl healthcheck --tools
+
+          # Prove we can launch signtool (spawning check)
+          signtool /? | Out-Null
 
       # ---------- Build & release ----------
       - name: Build & release with Tauri
