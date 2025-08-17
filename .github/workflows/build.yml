@@ -1,4 +1,4 @@
-name: 'publish'
+name: "publish"
 
 on:
   push:
@@ -15,19 +15,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest' # for Arm based macs (M1 and above).
-            args: '--target aarch64-apple-darwin --bundles app'
-          - platform: 'macos-latest' # for Intel based macs.
-            args: '--target x86_64-apple-darwin --bundles app'
-          - platform: 'ubuntu-22.04' # for Tauri v1 you could replace this with ubuntu-20.04.
-            args: ''
-          - platform: 'windows-latest'
-            args: ''
+          - platform: "macos-latest" # for Arm based macs (M1 and above).
+            args: "--target aarch64-apple-darwin --bundles app"
+          - platform: "macos-latest" # for Intel based macs.
+            args: "--target x86_64-apple-darwin --bundles app"
+          - platform: "ubuntu-22.04" # for Tauri v1 you could replace this with ubuntu-20.04.
+            args: ""
+          - platform: "windows-latest"
+            args: ""
 
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -38,8 +38,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: 'pnpm'
-          cache-dependency-path: '**/pnpm-lock.yaml'
+          cache: "pnpm"
+          cache-dependency-path: "**/pnpm-lock.yaml"
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -61,7 +61,7 @@ jobs:
       - name: import Apple Developer certificate
         if: runner.os == 'macOS'
         env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}           # base64-encoded .p12
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }} # base64-encoded .p12
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PATH: build.keychain
 
@@ -78,35 +78,38 @@ jobs:
           CERT_ID=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | awk -F'"' '{print $2}')
           echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
 
-      - name: Install DigiCert client tools 
+      # --- Windows only ---
+      - name: Install DigiCert client tools
         if: runner.os == 'Windows'
-        uses: digicert/ssm-code-signing@v1.1.0  # latest as of Jul 2025
+        uses: digicert/ssm-code-signing@v1.1.0
 
-      - name: Write client-auth certificate (.p12)
+      - name: Write DigiCert client-auth cert (.p12)
         if: runner.os == 'Windows'
-        shell: bash
-        run: echo "${{ secrets.SM_CLIENT_CERT_FILE_B64 }}" | base64 --decode > /d/Certificate_pkcs12.p12
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes('D:\Certificate_pkcs12.p12',
+            [Convert]::FromBase64String('${{ secrets.SM_CLIENT_CERT_FILE_B64 }}'))
 
       - name: Configure SMCTL environment
         if: runner.os == 'Windows'
-        shell: bash
+        shell: pwsh
         run: |
-          echo "SM_HOST=${{ secrets.SM_HOST }}" >> "$GITHUB_ENV"
-          echo "SM_API_KEY=${{ secrets.SM_API_KEY }}" >> "$GITHUB_ENV"
-          echo "SM_CLIENT_CERT_FILE=D:\\Certificate_pkcs12.p12" >> "$GITHUB_ENV"
-          echo "SM_CLIENT_CERT_PASSWORD=${{ secrets.SM_CLIENT_CERT_PASSWORD }}" >> "$GITHUB_ENV"
-          echo "KEYPAIR_ALIAS=${{ secrets.KEYPAIR_ALIAS }}" >> "$GITHUB_ENV"
-          echo "SM_CODE_SIGNING_CERT_SHA1_HASH=${{ secrets.SM_CODE_SIGNING_CERT_SHA1_HASH }}" >> "$GITHUB_ENV"
+          "SM_HOST=${{ secrets.SM_HOST }}" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "SM_API_KEY=${{ secrets.SM_API_KEY }}" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "SM_CLIENT_CERT_FILE=D:\Certificate_pkcs12.p12" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "SM_CLIENT_CERT_PASSWORD=${{ secrets.SM_CLIENT_CERT_PASSWORD }}" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "KEYPAIR_ALIAS=${{ secrets.KEYPAIR_ALIAS }}" | Out-File -Append -FilePath $env:GITHUB_ENV
 
-      - name: Register KSP and sync certificate
+      - name: Register KSP & sync cert to user store
         if: runner.os == 'Windows'
         shell: pwsh
-        env:
-          KEYPAIR_ALIAS: ${{ secrets.KEYPAIR_ALIAS }}
         run: |
           smctl windows ksp register
-          smctl windows certsync --keypair-alias $env:KEYPAIR_ALIAS
-
+          smctl windows certsync --keypair-alias "$env:KEYPAIR_ALIAS" --store user --reset
+          # (Optional diagnostics while testing)
+          smctl healthcheck --tools
+          smctl keypair ls --filter alias=$env:KEYPAIR_ALIAS
+          certutil -store -user My | findstr /I /C:"$env:KEYPAIR_ALIAS"
 
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -123,8 +126,8 @@ jobs:
 
         with:
           tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
-          releaseName: 'App v__VERSION__'
-          releaseBody: 'See the assets to download this version and install.'
+          releaseName: "App v__VERSION__"
+          releaseBody: "See the assets to download this version and install."
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
