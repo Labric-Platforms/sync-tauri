@@ -24,15 +24,15 @@
   "bundle": {
     "windows": {
       "signCommand": {
-        "cmd": "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64\\signtool.exe",
+        "cmd": "smctl",
         "args": [
           "sign",
-          "/sha1", "b75c98e57155c621d8e945864332ec5e41046318",
-          "/tr", "http://timestamp.digicert.com",
-          "/td", "SHA256",
-          "/fd", "SHA256",
-          "/debug", "/v",
-          "%1"
+          "--keypair-alias",
+          "key_1336398346",
+          "--input",
+          "%1",
+          "--config-file",
+          "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\smtools-windows-x64\\pkcs11properties.cfg"
         ]
       }
     },
