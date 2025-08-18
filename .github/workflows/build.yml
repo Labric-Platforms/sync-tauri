@@ -163,22 +163,35 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Find the built .exe files in the target directory
-          $exeFiles = Get-ChildItem -Path "src-tauri/target/release" -Filter "*.exe" -Recurse
-          foreach ($exe in $exeFiles) {
-            Write-Host "Signing: $($exe.FullName)"
-            smctl sign --keypair-alias "key_1336398346" --input "$($exe.FullName)" --config-file "D:\pkcs11properties.cfg"
+          # Sign the main application executable
+          $mainExe = "src-tauri/target/release/labric-sync-tauri.exe"
+          if (Test-Path $mainExe) {
+            Write-Host "Signing main executable: $mainExe"
+            smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg"
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "Successfully signed main executable"
+            } else {
+              Write-Error "Failed to sign main executable"
+              exit 1
+            }
+          } else {
+            Write-Error "Main executable not found at $mainExe"
+            exit 1
           }
 
-      - name: Sign Windows updater artifacts with DigiCert
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          # Find updater .exe files in the bundle directory
-          $updaterFiles = Get-ChildItem -Path "src-tauri/target/release/bundle" -Filter "*.exe" -Recurse
-          foreach ($exe in $updaterFiles) {
-            Write-Host "Signing updater: $($exe.FullName)"
-            smctl sign --keypair-alias "key_1336398346" --input "$($exe.FullName)" --config-file "D:\pkcs11properties.cfg"
+          # Sign the installer/setup executable
+          $setupExe = Get-ChildItem -Path "src-tauri/target/release/bundle" -Filter "*setup.exe" -Recurse | Select-Object -First 1
+          if ($setupExe) {
+            Write-Host "Signing setup executable: $($setupExe.FullName)"
+            smctl sign --keypair-alias "key_1336398346" --input "$($setupExe.FullName)" --config-file "D:\pkcs11properties.cfg"
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "Successfully signed setup executable"
+            } else {
+              Write-Error "Failed to sign setup executable"
+              exit 1
+            }
+          } else {
+            Write-Host "No setup executable found to sign"
           }
 
       - name: Cleanup macOS keychain
