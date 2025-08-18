@@ -194,14 +194,20 @@ jobs:
               Write-Host "smctl output (with timestamp): $output"
               
               if ($output -match "FAILED" -or $output -match "Error" -or $output -match "SignTool Error") {
-                Write-Host "Approach 2 failed, trying approach 3 (simple mode)..."
-                $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" --simple --verbose 2>&1
-                Write-Host "smctl output (simple mode): $output"
+                Write-Host "Approach 2 failed, trying approach 3 (alternative signing tool)..."
+                $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" --tool osslsigncode --verbose 2>&1
+                Write-Host "smctl output (osslsigncode): $output"
                 
                 if ($output -match "FAILED" -or $output -match "Error" -or $output -match "SignTool Error") {
-                  Write-Error "❌ All signing attempts failed for main executable"
-                  Write-Error "Final output: $output"
-                  exit 1
+                  Write-Host "Approach 3 failed, trying approach 4 (jsign)..."
+                  $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" --tool jsign --verbose 2>&1
+                  Write-Host "smctl output (jsign): $output"
+                  
+                  if ($output -match "FAILED" -or $output -match "Error" -or $output -match "SignTool Error") {
+                    Write-Error "❌ All signing attempts failed for main executable"
+                    Write-Error "Final output: $output"
+                    exit 1
+                  }
                 }
               }
             }
