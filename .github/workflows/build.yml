@@ -183,19 +183,30 @@ jobs:
             Write-Host "Checking smctl sign help:"
             smctl sign --help
             
-            # Try basic signing first
-            Write-Host "Attempting to sign main executable..."
-            $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" 2>&1
-            Write-Host "smctl output: $output"
+            # Try different signing approaches
+            Write-Host "Attempting to sign main executable (approach 1: no timestamp)..."
+            $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" --timestamp=false --verbose 2>&1
+            Write-Host "smctl output (no timestamp): $output"
             
-            # Check for actual success
             if ($output -match "FAILED" -or $output -match "Error" -or $output -match "SignTool Error") {
-              Write-Error "❌ Failed to sign main executable"
-              Write-Error "Output: $output"
-              exit 1
-            } else {
-              Write-Host "✅ Successfully signed main executable"
+              Write-Host "Approach 1 failed, trying approach 2 (with timestamp)..."
+              $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" --timestamp=true --verbose 2>&1
+              Write-Host "smctl output (with timestamp): $output"
+              
+              if ($output -match "FAILED" -or $output -match "Error" -or $output -match "SignTool Error") {
+                Write-Host "Approach 2 failed, trying approach 3 (simple mode)..."
+                $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" --simple --verbose 2>&1
+                Write-Host "smctl output (simple mode): $output"
+                
+                if ($output -match "FAILED" -or $output -match "Error" -or $output -match "SignTool Error") {
+                  Write-Error "❌ All signing attempts failed for main executable"
+                  Write-Error "Final output: $output"
+                  exit 1
+                }
+              }
             }
+            
+            Write-Host "✅ Successfully signed main executable"
           } else {
             Write-Error "Main executable not found at $mainExe"
             exit 1
