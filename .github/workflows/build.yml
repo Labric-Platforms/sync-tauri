@@ -135,8 +135,9 @@ jobs:
           smctl keypair list
 
       # ---------- Build & release ----------
-      - name: Build & release with Tauri
+      - name: Build with Tauri
         uses: tauri-apps/tauri-action@v0
+        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -156,6 +157,29 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      # ---------- Windows custom signing ----------
+      - name: Sign Windows binaries with DigiCert
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Find the built .exe files in the target directory
+          $exeFiles = Get-ChildItem -Path "src-tauri/target/release" -Filter "*.exe" -Recurse
+          foreach ($exe in $exeFiles) {
+            Write-Host "Signing: $($exe.FullName)"
+            smctl sign --keypair-alias "key_1336398346" --input "$($exe.FullName)" --config-file "D:\pkcs11properties.cfg"
+          }
+
+      - name: Sign Windows updater artifacts with DigiCert
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Find updater .exe files in the bundle directory
+          $updaterFiles = Get-ChildItem -Path "src-tauri/target/release/bundle" -Filter "*.exe" -Recurse
+          foreach ($exe in $updaterFiles) {
+            Write-Host "Signing updater: $($exe.FullName)"
+            smctl sign --keypair-alias "key_1336398346" --input "$($exe.FullName)" --config-file "D:\pkcs11properties.cfg"
+          }
 
       - name: Cleanup macOS keychain
         if: runner.os == 'macOS'

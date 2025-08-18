@@ -22,20 +22,6 @@
     }
   },
   "bundle": {
-    "windows": {
-      "signCommand": {
-        "cmd": "smctl",
-        "args": [
-          "sign",
-          "--keypair-alias",
-          "key_1336398346",
-          "--input",
-          "%1",
-          "--config-file",
-          "D:\\pkcs11properties.cfg"
-        ]
-      }
-    },
     "active": true,
     "targets": "all",
     "icon": [
