@@ -179,19 +179,25 @@ jobs:
             Write-Host "File size: $((Get-Item $mainExe).Length) bytes"
             Write-Host "Signing main executable: $mainExe"
             
-            # Try signing with verbose output
-            Write-Host "Running: smctl sign --keypair-alias key_1336398346 --input `"$mainExe`" --config-file `"D:\pkcs11properties.cfg`""
-            $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" --verbose 2>&1
-            Write-Host "smctl exit code: $LASTEXITCODE"
-            Write-Host "smctl full output: $output"
+            # Try signing without timestamp first (common fix for 0x8009002d)
+            Write-Host "Attempting to sign without timestamp..."
+            $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" --disable-timestamp --verbose 2>&1
+            Write-Host "smctl output (no timestamp): $output"
             
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "✅ Successfully signed main executable"
-            } else {
-              Write-Error "❌ Failed to sign main executable (exit code: $LASTEXITCODE)"
-              Write-Error "Output: $output"
-              exit 1
+            # Check if signing without timestamp works
+            if ($output -match "FAILED" -or $output -match "Error" -or $output -match "SignTool Error") {
+              Write-Host "Signing without timestamp failed, trying with timestamp..."
+              $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" --verbose 2>&1
+              Write-Host "smctl output (with timestamp): $output"
+              
+              if ($output -match "FAILED" -or $output -match "Error" -or $output -match "SignTool Error") {
+                Write-Error "❌ Failed to sign main executable - both attempts failed"
+                Write-Error "Output: $output"
+                exit 1
+              }
             }
+            
+            Write-Host "✅ Successfully signed main executable"
           } else {
             Write-Error "Main executable not found at $mainExe"
             exit 1
