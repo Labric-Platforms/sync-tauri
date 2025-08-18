@@ -163,16 +163,33 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          # Debug: Check environment and files
+          Write-Host "=== Debugging smctl signing ==="
+          Write-Host "Current directory: $(Get-Location)"
+          Write-Host "smctl version:"
+          smctl --version
+          Write-Host "Config file exists: $(Test-Path 'D:\pkcs11properties.cfg')"
+          Write-Host "Available keypairs:"
+          smctl keypair list
+          
           # Sign the main application executable
           $mainExe = "src-tauri/target/release/labric-sync-tauri.exe"
           if (Test-Path $mainExe) {
+            Write-Host "File exists: $mainExe"
+            Write-Host "File size: $((Get-Item $mainExe).Length) bytes"
             Write-Host "Signing main executable: $mainExe"
-            $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" 2>&1
-            Write-Host "smctl output: $output"
-            if ($output -match "Signed Successfully" -or $output -match "SUCCESS") {
+            
+            # Try signing with verbose output
+            Write-Host "Running: smctl sign --keypair-alias key_1336398346 --input `"$mainExe`" --config-file `"D:\pkcs11properties.cfg`""
+            $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" --verbose 2>&1
+            Write-Host "smctl exit code: $LASTEXITCODE"
+            Write-Host "smctl full output: $output"
+            
+            if ($LASTEXITCODE -eq 0) {
               Write-Host "✅ Successfully signed main executable"
             } else {
-              Write-Error "❌ Failed to sign main executable: $output"
+              Write-Error "❌ Failed to sign main executable (exit code: $LASTEXITCODE)"
+              Write-Error "Output: $output"
               exit 1
             }
           } else {
