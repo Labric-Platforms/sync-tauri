@@ -179,25 +179,23 @@ jobs:
             Write-Host "File size: $((Get-Item $mainExe).Length) bytes"
             Write-Host "Signing main executable: $mainExe"
             
-            # Try signing without timestamp first (common fix for 0x8009002d)
-            Write-Host "Attempting to sign without timestamp..."
-            $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" --disable-timestamp --verbose 2>&1
-            Write-Host "smctl output (no timestamp): $output"
+            # Check available smctl sign options
+            Write-Host "Checking smctl sign help:"
+            smctl sign --help
             
-            # Check if signing without timestamp works
+            # Try basic signing first
+            Write-Host "Attempting to sign main executable..."
+            $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" 2>&1
+            Write-Host "smctl output: $output"
+            
+            # Check for actual success
             if ($output -match "FAILED" -or $output -match "Error" -or $output -match "SignTool Error") {
-              Write-Host "Signing without timestamp failed, trying with timestamp..."
-              $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" --verbose 2>&1
-              Write-Host "smctl output (with timestamp): $output"
-              
-              if ($output -match "FAILED" -or $output -match "Error" -or $output -match "SignTool Error") {
-                Write-Error "❌ Failed to sign main executable - both attempts failed"
-                Write-Error "Output: $output"
-                exit 1
-              }
+              Write-Error "❌ Failed to sign main executable"
+              Write-Error "Output: $output"
+              exit 1
+            } else {
+              Write-Host "✅ Successfully signed main executable"
             }
-            
-            Write-Host "✅ Successfully signed main executable"
           } else {
             Write-Error "Main executable not found at $mainExe"
             exit 1
@@ -206,14 +204,19 @@ jobs:
           # Sign the installer/setup executable
           $setupExe = Get-ChildItem -Path "src-tauri/target/release/bundle" -Filter "*setup.exe" -Recurse | Select-Object -First 1
           if ($setupExe) {
-            Write-Host "Signing setup executable: $($setupExe.FullName)"
+            Write-Host "Setup executable found: $($setupExe.FullName)"
+            Write-Host "Setup file size: $((Get-Item $setupExe.FullName).Length) bytes"
+            Write-Host "Signing setup executable..."
             $output = smctl sign --keypair-alias "key_1336398346" --input "$($setupExe.FullName)" --config-file "D:\pkcs11properties.cfg" 2>&1
             Write-Host "smctl output: $output"
-            if ($output -match "Signed Successfully" -or $output -match "SUCCESS") {
-              Write-Host "✅ Successfully signed setup executable"
-            } else {
-              Write-Error "❌ Failed to sign setup executable: $output"
+            
+            # Check for actual success
+            if ($output -match "FAILED" -or $output -match "Error" -or $output -match "SignTool Error") {
+              Write-Error "❌ Failed to sign setup executable"
+              Write-Error "Output: $output"
               exit 1
+            } else {
+              Write-Host "✅ Successfully signed setup executable"
             }
           } else {
             Write-Host "No setup executable found to sign"
