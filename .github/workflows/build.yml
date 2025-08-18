@@ -167,11 +167,12 @@ jobs:
           $mainExe = "src-tauri/target/release/labric-sync-tauri.exe"
           if (Test-Path $mainExe) {
             Write-Host "Signing main executable: $mainExe"
-            smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg"
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "Successfully signed main executable"
+            $output = smctl sign --keypair-alias "key_1336398346" --input "$mainExe" --config-file "D:\pkcs11properties.cfg" 2>&1
+            Write-Host "smctl output: $output"
+            if ($output -match "Signed Successfully" -or $output -match "SUCCESS") {
+              Write-Host "✅ Successfully signed main executable"
             } else {
-              Write-Error "Failed to sign main executable"
+              Write-Error "❌ Failed to sign main executable: $output"
               exit 1
             }
           } else {
@@ -183,11 +184,12 @@ jobs:
           $setupExe = Get-ChildItem -Path "src-tauri/target/release/bundle" -Filter "*setup.exe" -Recurse | Select-Object -First 1
           if ($setupExe) {
             Write-Host "Signing setup executable: $($setupExe.FullName)"
-            smctl sign --keypair-alias "key_1336398346" --input "$($setupExe.FullName)" --config-file "D:\pkcs11properties.cfg"
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "Successfully signed setup executable"
+            $output = smctl sign --keypair-alias "key_1336398346" --input "$($setupExe.FullName)" --config-file "D:\pkcs11properties.cfg" 2>&1
+            Write-Host "smctl output: $output"
+            if ($output -match "Signed Successfully" -or $output -match "SUCCESS") {
+              Write-Host "✅ Successfully signed setup executable"
             } else {
-              Write-Error "Failed to sign setup executable"
+              Write-Error "❌ Failed to sign setup executable: $output"
               exit 1
             }
           } else {
