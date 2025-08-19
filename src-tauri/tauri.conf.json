@@ -31,7 +31,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "signCommand": "smctl sign --verbose --keypair-alias key_1336398346 --input %1"
+    }
   },
   "plugins": {
     "updater": {
