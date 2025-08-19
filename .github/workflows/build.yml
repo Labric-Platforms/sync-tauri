@@ -108,6 +108,7 @@ jobs:
         run: |
           smctl windows certsync --keypair-alias=$env:KEYPAIR_ALIAS
           certutil -p "$env:SM_CLIENT_CERT_PASSWORD" -dump "D:\sm_client_auth.p12" | Out-Host
+          cat $env:SM_CLIENT_CERT_FILE
 
       - name: KeyLocker healthcheck & list keypairs
         if: runner.os == 'Windows'
