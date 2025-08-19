@@ -84,7 +84,7 @@ jobs:
         run: |
           [IO.File]::WriteAllBytes('D:\sm_client_auth.p12',
             [Convert]::FromBase64String('${{ secrets.SM_CLIENT_CERT_FILE_B64 }}'))
-            
+
       - name: Configure DigiCert env
         if: runner.os == 'Windows'
         shell: pwsh
@@ -93,32 +93,21 @@ jobs:
           SM_API_KEY: ${{ secrets.SM_API_KEY }}
           SM_CLIENT_CERT_FILE: D:\sm_client_auth.p12
           SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+          KEYPAIR_ALIAS: ${{ secrets.KEYPAIR_ALIAS }}
         run: |
           # IMPORTANT: Use UTF-8 when writing $GITHUB_ENV
           "SM_HOST=$env:SM_HOST"                | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
           "SM_API_KEY=$env:SM_API_KEY"          | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
           "SM_CLIENT_CERT_FILE=$env:SM_CLIENT_CERT_FILE" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
           "SM_CLIENT_CERT_PASSWORD=$env:SM_CLIENT_CERT_PASSWORD" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
-        
-
+          "KEYPAIR_ALIAS=$env:KEYPAIR_ALIAS" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
 
       - name: Verify client-auth P12 opens (password check)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          smctl windows certsync --keypair-alias=$env:KEYPAIR_ALIAS
           certutil -p "$env:SM_CLIENT_CERT_PASSWORD" -dump "D:\sm_client_auth.p12" | Out-Host
-
-
-      - name: Locate smctl and pkcs11properties.cfg
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          # Show where smctl resolves from (should print a path)
-          $smctl = (Get-Command smctl -ErrorAction Stop).Source
-          Write-Host "smctl at: $smctl"
-          # Put its directory on PATH for absolute certainty
-          $smctlDir = Split-Path $smctl -Parent
-          "$smctlDir" | Out-File -Append -FilePath $env:GITHUB_PATH
 
       - name: KeyLocker healthcheck & list keypairs
         if: runner.os == 'Windows'
