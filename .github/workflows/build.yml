@@ -84,7 +84,7 @@ jobs:
         run: |
           [IO.File]::WriteAllBytes('D:\sm_client_auth.p12',
             [Convert]::FromBase64String('${{ secrets.SM_CLIENT_CERT_FILE_B64 }}'))
-
+            
       - name: Configure DigiCert env
         if: runner.os == 'Windows'
         shell: pwsh
@@ -94,10 +94,12 @@ jobs:
           SM_CLIENT_CERT_FILE: D:\sm_client_auth.p12
           SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
         run: |
-          "SM_HOST=$env:SM_HOST" | Out-File -Append -FilePath $env:GITHUB_ENV
-          "SM_API_KEY=$env:SM_API_KEY" | Out-File -Append -FilePath $env:GITHUB_ENV
-          "SM_CLIENT_CERT_FILE=$env:SM_CLIENT_CERT_FILE" | Out-File -Append -FilePath $env:GITHUB_ENV
-          "SM_CLIENT_CERT_PASSWORD=$env:SM_CLIENT_CERT_PASSWORD" | Out-File -Append -FilePath $env:GITHUB_ENV
+          # IMPORTANT: Use UTF-8 when writing $GITHUB_ENV
+          "SM_HOST=$env:SM_HOST"                | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+          "SM_API_KEY=$env:SM_API_KEY"          | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+          "SM_CLIENT_CERT_FILE=$env:SM_CLIENT_CERT_FILE" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+          "SM_CLIENT_CERT_PASSWORD=$env:SM_CLIENT_CERT_PASSWORD" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+        
 
 
       - name: Verify client-auth P12 opens (password check)
