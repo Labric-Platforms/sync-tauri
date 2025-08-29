@@ -153,7 +153,6 @@ export default function Simple() {
   }
 
   function getDirectoryName(path: string): string {
-    // return path.split(/[/\\]/).pop() || path;
     return path;
   }
 
@@ -166,12 +165,6 @@ export default function Simple() {
 
   return (
     <main className="container mx-auto p-6 max-w-4xl">
-      {/* <h1 className="text-3xl font-bold mb-6">File Watcher</h1> */}
-
-      {/* {!selectedFolder && (
-        <FolderSelection setSelectedFolder={setSelectedFolder} />
-      )} */}
-
       <div className="space-y-8 mt-16 max-w-lg mx-auto">
         {/* Folder Selection */}
             {!selectedFolder ? (
@@ -220,8 +213,6 @@ export default function Simple() {
                   
               </div>
             )}
-          {/* </CardContent> */}
-        {/* </Card> */}
 
         {/* File Changes */}
         {selectedFolder && (
@@ -234,8 +225,8 @@ export default function Simple() {
             </CardHeader>
             <CardContent>
               {fileChanges.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">
-                  Loading folder contents...
+                <p className="text-muted-foreground text-center text-sm py-4">
+                  No files found
                 </p>
               ) : (
                 <ScrollArea className="h-96">
