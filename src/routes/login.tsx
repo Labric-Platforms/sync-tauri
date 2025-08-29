@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
-import { useNavigate } from '@tanstack/react-router'
+import { useState, useEffect, useRef } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { fetch } from '@tauri-apps/plugin-http';
@@ -47,42 +46,44 @@ const CodeDisplay = ({ code, isLoading = false }: { code?: string; isLoading?: b
   );
 };
 
-const EnrolledDisplay = () => {
-  const [orgName, setOrgName] = useState<string>('Unknown Organization');
-
-  useEffect(() => {
-    const loadOrgName = async () => {
-      try {
-        const token = await getToken();
-        if (token?.org_name) {
-          setOrgName(token.org_name);
-        }
-      } catch (error) {
-        console.error('Error loading organization name:', error);
-      }
-    };
-    loadOrgName();
-  }, []);
-
-  return (
-    <div className="text-center">
-      <h2 className="text-xl font-semibold text-green-600 mb-2">Device Enrolled!</h2>
-      <p className="text-lg">{orgName}</p>
-    </div>
-  );
-};
-
 function Login() {
   const [enrollmentCode, setEnrollmentCode] = useState<string | null>(null);
-  const [isLoadingCode, setIsLoadingCode] = useState(true);
-  const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
-  const [isEnrolled, setIsEnrolled] = useState(false);
-  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const isSigningInRef = useRef(false);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const navigate = useNavigate();
 
-  const apiCall = (endpoint: string, body: any, token?: string) => 
-    fetch(`${import.meta.env.VITE_SERVER_URL}/api/sync/${endpoint}`, {
+  // Check if already signed in and redirect
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const token = await getToken();
+        if (token && token.exp && token.exp > Date.now() / 1000) {
+          navigate({ to: '/dashboard' });
+          return;
+        }
+      } catch (error) {
+        console.error('Error checking auth:', error);
+      }
+      
+      // If not signed in, start enrollment process
+      await initializeEnrollment();
+    };
+    checkAuth();
+  }, [navigate]);
+
+  // Cleanup interval on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
+
+  const apiCall = async (endpoint: string, body: any, token?: string) => {
+    return fetch(`${import.meta.env.VITE_SERVER_URL}/api/sync/${endpoint}`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -90,29 +91,27 @@ function Login() {
       },
       body: JSON.stringify(body)
     });
-
-  const handleError = (error: any, message: string, toastId: string) => {
-    console.error(message, error);
-    toast.error(message, { id: toastId });
   };
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      const token = await getToken();
-      if (token && token.exp && token.exp > Date.now() / 1000) {
-        console.log("Login page - valid token found, navigating to dashboard");
-        navigate({ to: '/dashboard' });
-      } else {
-        console.log("Login page - no valid token, staying on login");
-      }
-    };
-    checkAuth();
-  }, [navigate]);
+  const initializeEnrollment = async () => {
+    try {
+      // Get device info
+      const info = (await invoke("get_device_info")) as DeviceInfo;
+      
+      // Get enrollment code
+      await fetchEnrollmentCode(info);
+      
+      // Start polling for enrollment
+      startPolling(info);
+      
+    } catch (error) {
+      console.error('Failed to initialize enrollment:', error);
+      toast.error('Failed to initialize enrollment');
+    }
+  };
 
   const fetchEnrollmentCode = async (deviceInfo: DeviceInfo) => {
-    setIsLoadingCode(true);
     try {
-      // Check if org ID is in the store
       const requestBody: any = {
         hostname: deviceInfo.hostname,
         platform: deviceInfo.platform,
@@ -125,19 +124,19 @@ function Login() {
         device_fingerprint: deviceInfo.device_fingerprint
       };
       
+      // Include org ID if available
       try {
         const organizationId = await getOrganizationId();
         if (organizationId) {
           requestBody.org_id = organizationId;
-          console.log('Found organization ID in store:', organizationId);
         }
       } catch (error) {
-        console.log('Error retrieving organization ID:', error);
+        // Ignore error, org ID is optional
       }
 
       const response = await apiCall('get_code', requestBody);
-
-      if (!response.ok) { 
+      
+      if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -145,135 +144,75 @@ function Login() {
       
       if (data.success && data.otp_code) {
         setEnrollmentCode(data.otp_code);
-        console.log('Retrieved enrollment code for device:', deviceInfo);
-        console.log('Code expires at:', data.expires_at);
       } else {
-        throw new Error('Invalid response format or unsuccessful request');
+        throw new Error('Invalid response format');
       }
     } catch (error) {
-      handleError(error, 'Failed to fetch enrollment code from server', 'enrollment-code-error');
+      console.error('Failed to fetch enrollment code:', error);
+      toast.error('Failed to fetch enrollment code');
     } finally {
-      setIsLoadingCode(false);
+      setIsLoading(false);
     }
   };
 
-  const pollEnrollment = async (deviceInfo: DeviceInfo) => {
-    try {
-      const response = await apiCall('poll_enrollment', {
-        device_fingerprint: deviceInfo.device_fingerprint
-      });
+  const startPolling = (deviceInfo: DeviceInfo) => {
+    // Clear any existing interval
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
 
-      if (!response.ok) {
-        console.error('Failed to poll enrollment status:', response.status);
-        return;
-      }
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await apiCall('poll_enrollment', {
+          device_fingerprint: deviceInfo.device_fingerprint
+        });
 
-      const data = await response.json();
-      console.log('Poll response:', data);
-      
-      if (data.success && data.enrolled) {
-        setIsEnrolled(true);
-        console.log('Device enrolled:', data);
+        if (!response.ok) return;
+
+        const data = await response.json();
         
-        // Handle token-based authentication
-        if (data.signin_token && !isSigningIn) {
-          setIsSigningIn(true);
+        if (data.success && data.enrolled && data.signin_token && !isSigningInRef.current) {
+          // Immediately set the flag to prevent duplicate calls
+          isSigningInRef.current = true;
           
-          // Create a promise for the sign-in process
-          const signInPromise = new Promise<void>(async (resolve, reject) => {
-            try {
-              // Store the token and organization ID
-              await setToken(data.signin_token);
-              
-              if (data.organization_id) {
-                await setOrganizationId(data.organization_id);
-                console.log('Successfully stored organization info');
-              }
-              
-              // Navigate to dashboard
-              navigate({ to: '/dashboard' });
-              resolve();
-              
-            } catch (error) {
-              console.error('Failed to sign in with token', error);
-              setIsSigningIn(false);
-              reject(error);
-            }
-          });
+          // Clear the interval
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
           
-          // Use toast.promise for loading state with success/error handling
+          // Sign in with promise toast
+          const signInPromise = signIn(data.signin_token, data.organization_id);
           toast.promise(signInPromise, {
-            loading: 'Signing you in...',
-            success: 'Successfully signed in!',
-            error: 'Failed to sign in with token'
+            loading: 'Pairing to your organization...',
+            success: 'Successfully paired device',
+            error: 'Failed to pair device'
           });
         }
+      } catch (error) {
+        console.error('Error polling enrollment:', error);
       }
-    } catch (error) {
-      console.error('Error polling enrollment status:', error);
+    }, 1000);
+  };
+
+  const signIn = async (token: string, organizationId?: string) => {
+    await setToken(token);
+    
+    if (organizationId) {
+      await setOrganizationId(organizationId);
     }
+    
+    navigate({ to: '/dashboard' });
   };
 
   const handleOpenEnrollPage = async () => {
     try {
-        await openUrl("https://platform.labric.co/enroll");
-    } catch (err) {
-      handleError(err, 'Failed to open enrollment page', 'enrollment-page-error');
+      await openUrl("https://platform.labric.co/enroll");
+    } catch (error) {
+      console.error('Failed to open enrollment page:', error);
+      toast.error('Failed to open enrollment page');
     }
   };
-
-  useEffect(() => {
-    // Gather device information
-    const getDeviceInfo = async () => {
-      try {
-        const info = (await invoke("get_device_info")) as DeviceInfo;
-        setDeviceInfo(info);
-        // Generate initial code with device info
-        await fetchEnrollmentCode(info);
-      } catch (error) {
-        handleError(error, 'Failed to get device information', 'device-info-error');
-        // Fallback device info
-        const fallbackInfo: DeviceInfo = {
-          hostname: "Unknown",
-          platform: "Unknown",
-          release: "Unknown",
-          arch: "Unknown",
-          cpus: 0,
-          total_memory: 0,
-          os_type: "Unknown",
-          device_id: "Unknown",
-          device_fingerprint: "Unknown",
-        };
-        setDeviceInfo(fallbackInfo);
-        await fetchEnrollmentCode(fallbackInfo);
-      }
-    };
-
-    getDeviceInfo();
-  }, []);
-
-  useEffect(() => {
-    // Set up interval to generate new code every 120 seconds
-    if (!deviceInfo || isEnrolled) return;
-
-    const interval = setInterval(async () => {
-      await fetchEnrollmentCode(deviceInfo);
-      toast.success('New enrollment code generated', { id: 'enrollment-code-generated' });
-    }, 120000);
-
-    return () => clearInterval(interval);
-  }, [deviceInfo, isEnrolled]);
-
-  useEffect(() => {
-    // Set up polling for enrollment status every second
-    if (!deviceInfo || isEnrolled) return;
-
-    const interval = setInterval(async () => {
-      await pollEnrollment(deviceInfo);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [deviceInfo, isEnrolled]);
 
   return (
     <div className="flex flex-col items-center justify-center h-svh p-6 gap-6">
@@ -281,29 +220,20 @@ function Login() {
         <img src={logo} alt="Labric Sync" className="w-10 h-10" />
         <h1 className="text-2xl font-semibold">Labric Sync</h1>
       </div>
+      
       <div className="w-full max-w-sm flex flex-col items-center justify-center gap-4">
-        {isSigningIn ? (
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-blue-600 mb-2">Signing you in...</h2>
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          </div>
-        ) : isEnrolled ? (
-          <EnrolledDisplay />
-        ) : (
-          <CodeDisplay code={enrollmentCode || undefined} isLoading={isLoadingCode} />
-        )}
+        <CodeDisplay code={enrollmentCode || undefined} isLoading={isLoading} />
       </div>
-      {!isEnrolled && !isSigningIn && (
-        <h2 className="text-md text-muted-foreground mb-4">
-          Enter this code at{" "}
-          <button
-            onClick={handleOpenEnrollPage}
-            className="text-blue-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
-          >
-            labric.co/enroll
-          </button>
-        </h2>
-      )}
+      
+      <h2 className="text-md text-muted-foreground mb-4">
+        Enter this code at{" "}
+        <button
+          onClick={handleOpenEnrollPage}
+          className="text-blue-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
+        >
+          labric.co/enroll
+        </button>
+      </h2>
     </div>
   );
 }
