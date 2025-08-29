@@ -1,41 +1,33 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { useUploadManager } from "@/hooks/useUploadManager";
 
-interface UploadSettingsDialogProps {
+interface UploadSettingsSheetProps {
   children: React.ReactNode;
 }
 
-function UploadSettingsDialog({ children }: UploadSettingsDialogProps) {
+function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
   const {
     config,
     isLoading,
     error,
     updateConfig,
-    updateServerUrl,
     updateUploadDelay,
     updateIgnoredPatterns,
     toggleUploads,
   } = useUploadManager();
 
-  const [serverUrlInput, setServerUrlInput] = useState("");
   const [delayInput, setDelayInput] = useState("");
   const [concurrencyInput, setConcurrencyInput] = useState("");
   const [newPattern, setNewPattern] = useState("");
@@ -43,8 +35,7 @@ function UploadSettingsDialog({ children }: UploadSettingsDialogProps) {
   // Initialize inputs when config loads
   useState(() => {
     if (config) {
-      setServerUrlInput(config.server_url);
-      setDelayInput(config.upload_delay_ms.toString());
+      setDelayInput((config.upload_delay_ms / 1000).toString());
       setConcurrencyInput(config.max_concurrent_uploads.toString());
     }
   });
@@ -57,21 +48,12 @@ function UploadSettingsDialog({ children }: UploadSettingsDialogProps) {
     }
   };
 
-  const handleUpdateServerUrl = async () => {
-    if (serverUrlInput.trim()) {
-      try {
-        await updateServerUrl(serverUrlInput.trim());
-      } catch (err) {
-        console.error("Failed to update server URL:", err);
-      }
-    }
-  };
-
   const handleUpdateDelay = async () => {
-    const delay = parseInt(delayInput);
+    const delay = parseFloat(delayInput);
     if (!isNaN(delay) && delay >= 0) {
       try {
-        await updateUploadDelay(delay);
+        // Convert seconds to milliseconds for the backend
+        await updateUploadDelay(Math.round(delay * 1000));
       } catch (err) {
         console.error("Failed to update delay:", err);
       }
@@ -119,167 +101,131 @@ function UploadSettingsDialog({ children }: UploadSettingsDialogProps) {
 
   if (isLoading || error || !config) {
     return (
-      <Dialog>
-        <DialogTrigger asChild>{children}</DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Upload Settings</DialogTitle>
-            <DialogDescription>
-              {isLoading && "Loading upload configuration..."}
-              {error && `Error: ${error}`}
-              {!config && "No upload configuration available"}
-            </DialogDescription>
-          </DialogHeader>
-        </DialogContent>
-      </Dialog>
+      <Sheet>
+        <SheetTrigger asChild>{children}</SheetTrigger>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Upload Settings</SheetTitle>
+          </SheetHeader>
+        </SheetContent>
+      </Sheet>
     );
   }
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="overflow-y-auto max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle>Upload Settings</DialogTitle>
-          <DialogDescription>
-            Configure upload server settings and file patterns
-          </DialogDescription>
-        </DialogHeader>
+    <Sheet>
+      <SheetTrigger asChild>{children}</SheetTrigger>
+      <SheetContent className="overflow-y-auto w-[400px] sm:w-[540px]">
+        <SheetHeader>
+          <SheetTitle>Upload Settings</SheetTitle>
+        </SheetHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-6 px-4">
           {/* Upload Control */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Upload Control</CardTitle>
-              <CardDescription>Enable or disable the upload system</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <div className="text-sm font-medium">Enable Uploads</div>
-                  <div className="text-sm text-muted-foreground">
-                    When enabled, files will be automatically uploaded to the server
-                  </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="text-sm font-medium">Enable Uploads</div>
+                <div className="text-sm text-muted-foreground">
+                  {config.enabled ? "Files will be uploaded on change" : "Files will not be uploaded on change"}
                 </div>
-                <Switch
-                  checked={config.enabled}
-                  onCheckedChange={handleToggleUploads}
-                />
               </div>
-            </CardContent>
-          </Card>
+              <Switch
+                checked={config.enabled}
+                onCheckedChange={handleToggleUploads}
+              />
+            </div>
+          </div>
+
+          <Separator />
 
           {/* Server Configuration */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Server Configuration</CardTitle>
-              <CardDescription>Configure upload server settings</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Server URL</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={serverUrlInput}
-                    onChange={(e) => setServerUrlInput(e.target.value)}
-                    placeholder="http://localhost:3000"
-                    className="flex-1 px-3 py-2 border rounded-md text-sm"
-                  />
-                  <Button onClick={handleUpdateServerUrl} size="sm">
-                    Update
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Upload Delay (ms)</label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={delayInput}
-                    onChange={(e) => setDelayInput(e.target.value)}
-                    placeholder="2000"
-                    min="0"
-                    className="flex-1 px-3 py-2 border rounded-md text-sm"
-                  />
-                  <Button onClick={handleUpdateDelay} size="sm">
-                    Update
-                  </Button>
-                </div>
-                <p className="text-xs text-gray-500">
-                  Delay before uploading to batch rapid file changes
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Max Concurrent Uploads</label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={concurrencyInput}
-                    onChange={(e) => setConcurrencyInput(e.target.value)}
-                    placeholder="5"
-                    min="1"
-                    max="20"
-                    className="flex-1 px-3 py-2 border rounded-md text-sm"
-                  />
-                  <Button onClick={handleUpdateConcurrency} size="sm">
-                    Update
-                  </Button>
-                </div>
-                <p className="text-xs text-gray-500">
-                  Number of files that can upload simultaneously (1-20)
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Ignored Patterns */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Ignored File Patterns</CardTitle>
-              <CardDescription>
-                Patterns for files to ignore during upload (uses glob patterns)
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <div className="space-y-6">
+            <div>
+              <label htmlFor="delayInput" className="text-sm font-medium block mb-2">Upload Delay (seconds)</label>
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newPattern}
-                  onChange={(e) => setNewPattern(e.target.value)}
-                  placeholder="*.tmp, .git/**, node_modules/**"
-                  className="flex-1 px-3 py-2 border rounded-md text-sm"
+                <Input
+                  id="delayInput"
+                  type="number"
+                  value={delayInput}
+                  onChange={(e) => setDelayInput(e.target.value)}
+                  placeholder="2"
+                  min="0"
+                  step="0.1"
+                  className="flex-1"
                 />
-                <Button onClick={handleAddPattern} size="sm">
-                  Add Pattern
+                <Button onClick={handleUpdateDelay} size="sm">
+                  Update
                 </Button>
               </div>
-
-              <div className="flex flex-wrap gap-2">
-                {config.ignored_patterns.map((pattern, index) => (
-                  <Badge
-                    key={index}
-                    variant="secondary"
-                    className="cursor-pointer hover:bg-red-100"
-                    onClick={() => handleRemovePattern(pattern)}
-                  >
-                    {pattern} ×
-                  </Badge>
-                ))}
-              </div>
-
-              <p className="text-xs text-gray-500">
-                Click on a pattern to remove it. Common patterns: *.tmp, *.log, .git/**,
-                node_modules/**, .DS_Store
+              <p className="text-xs text-muted-foreground mt-1">
+                Delay before uploading to batch rapid file changes
               </p>
-            </CardContent>
-          </Card>
+            </div>
+
+            <div>
+              <label htmlFor="concurrencyInput" className="text-sm font-medium block mb-2">Max Concurrent Uploads</label>
+              <div className="flex gap-2">
+                <Input
+                  id="concurrencyInput"
+                  type="number"
+                  value={concurrencyInput}
+                  onChange={(e) => setConcurrencyInput(e.target.value)}
+                  placeholder="5"
+                  min="1"
+                  max="20"
+                  className="flex-1"
+                />
+                <Button onClick={handleUpdateConcurrency} size="sm">
+                  Update
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Number of files that can upload simultaneously (1-20)
+              </p>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Ignored Patterns */}
+          <div>
+            <label htmlFor="newPattern" className="text-sm font-medium block mb-2">Ignored File Patterns</label>
+            <div className="flex gap-2">
+              <Input
+                id="newPattern"
+                type="text"
+                value={newPattern}
+                onChange={(e) => setNewPattern(e.target.value)}
+                placeholder="*.tmp, .git/**, node_modules/**"
+                className="flex-1"
+              />
+              <Button onClick={handleAddPattern} size="sm">
+                Add
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mt-3">
+              {config.ignored_patterns.map((pattern, index) => (
+                <Badge
+                  key={index}
+                  variant="secondary"
+                  className="cursor-pointer"
+                  onClick={() => handleRemovePattern(pattern)}
+                >
+                  {pattern} ×
+                </Badge>
+              ))}
+            </div>
+
+            <p className="text-xs text-muted-foreground mt-1">
+              Matching files will not be uploaded
+            </p>
+          </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
 
-export default UploadSettingsDialog; 
+export default UploadSettingsSheet; 
