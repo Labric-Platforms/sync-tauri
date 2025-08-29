@@ -124,7 +124,7 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
           </SheetTrigger>
           </div>
         </TooltipTrigger>
-        <TooltipContent>
+        <TooltipContent collisionPadding={8}>
           Upload Settings
         </TooltipContent>
       </Tooltip>
