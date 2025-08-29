@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useUploadManager } from "@/hooks/useUploadManager";
 
 interface UploadSettingsSheetProps {
@@ -114,7 +115,19 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
 
   return (
     <Sheet>
-      <SheetTrigger asChild>{children}</SheetTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div tabIndex={-1}>
+
+          <SheetTrigger asChild>
+            {children}
+          </SheetTrigger>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>
+          Upload Settings
+        </TooltipContent>
+      </Tooltip>
       <SheetContent className="overflow-y-auto w-[400px] sm:w-[540px]">
         <SheetHeader>
           <SheetTitle>Upload Settings</SheetTitle>

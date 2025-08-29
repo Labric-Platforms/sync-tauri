@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
 import { FileChangeEvent } from "@/types";
 import UploadManager from "./UploadManager";
 import UploadSettingsSheet from "./UploadSettingsDialog";
@@ -296,20 +296,11 @@ export default function Simple() {
             const actualChanges = fileChanges.filter(change => change.event_type !== 'initial').length;
             return actualChanges >= 100 ? '100+' : actualChanges;
           })()} changes detected</span>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div>
-                <UploadSettingsSheet>
-                  <button className="hover:bg-muted p-1 rounded">
-                    <Settings2Icon className="w-3 h-3" />
-                  </button>
-                </UploadSettingsSheet>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              Upload Settings
-            </TooltipContent>
-          </Tooltip>
+          <UploadSettingsSheet>
+            <button className="hover:bg-muted p-1 rounded">
+              <Settings2Icon className="w-3 h-3" />
+            </button>
+          </UploadSettingsSheet>
         </div>
       </div>
     </main>
