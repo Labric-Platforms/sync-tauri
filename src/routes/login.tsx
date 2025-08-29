@@ -178,40 +178,35 @@ function Login() {
         // Handle token-based authentication
         if (data.signin_token && !isSigningIn) {
           setIsSigningIn(true);
-          toast.info('Signing you in...', { id: 'signing-in' });
           
-          try {
-            // Store the token and organization ID
-            await setToken(data.signin_token);
-            
-            if (data.organization_id) {
-              await setOrganizationId(data.organization_id);
-              console.log('Successfully stored organization info');
-            }
-            
-            // Call finish_enrollment API with device fingerprint
+          // Create a promise for the sign-in process
+          const signInPromise = new Promise<void>(async (resolve, reject) => {
             try {
-              console.log("Calling finish_enrollment", data.signin_token);
-              const finishResponse = await apiCall('finish_enrollment', {
-                device_fingerprint: deviceInfo.device_fingerprint
-              }, data.signin_token);
-
-              if (!finishResponse.ok) {
-                console.warn('Failed to complete enrollment finalization:', finishResponse.status);
+              // Store the token and organization ID
+              await setToken(data.signin_token);
+              
+              if (data.organization_id) {
+                await setOrganizationId(data.organization_id);
+                console.log('Successfully stored organization info');
               }
-            } catch (finishError) {
-              console.warn('Error calling finish_enrollment:', finishError);
+              
+              // Navigate to dashboard
+              navigate({ to: '/dashboard' });
+              resolve();
+              
+            } catch (error) {
+              console.error('Failed to sign in with token', error);
+              setIsSigningIn(false);
+              reject(error);
             }
-            
-            toast.success('Successfully signed in!', { id: 'sign-in-success' });
-            
-            // Navigate to dashboard
-            navigate({ to: '/dashboard' });
-            
-          } catch (error) {
-            handleError(error, 'Failed to sign in with token', 'sign-in-error');
-            setIsSigningIn(false);
-          }
+          });
+          
+          // Use toast.promise for loading state with success/error handling
+          toast.promise(signInPromise, {
+            loading: 'Signing you in...',
+            success: 'Successfully signed in!',
+            error: 'Failed to sign in with token'
+          });
         }
       }
     } catch (error) {
