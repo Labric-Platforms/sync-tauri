@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -107,6 +108,9 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
         <SheetContent>
           <SheetHeader>
             <SheetTitle>Upload Settings</SheetTitle>
+            <SheetDescription className="sr-only">
+              Configure upload behavior and file filters
+            </SheetDescription>
           </SheetHeader>
         </SheetContent>
       </Sheet>
@@ -131,6 +135,9 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
       <SheetContent className="overflow-y-auto w-[400px] sm:w-[540px]">
         <SheetHeader>
           <SheetTitle>Upload Settings</SheetTitle>
+          <SheetDescription className="sr-only">
+            Configure upload behavior and file filters
+          </SheetDescription>
         </SheetHeader>
 
         <div className="space-y-6 px-4">

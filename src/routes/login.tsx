@@ -216,7 +216,7 @@ function Login() {
 
   return (
     <div className="flex flex-col items-center justify-center h-svh p-6 gap-6">
-      <div className="flex items-center justify-center gap-3">
+      <div className="flex items-center justify-center gap-1.5">
         <img src={logo} alt="Labric Sync" className="w-10 h-10" />
         <h1 className="text-2xl font-semibold">Labric Sync</h1>
       </div>

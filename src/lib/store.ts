@@ -59,6 +59,11 @@ export async function getToken(): Promise<CustomJwtPayload | null> {
   }
 }
 
+export async function getAccessToken(): Promise<string | null> {
+  const token = await get<string | null>(TOKEN_KEY, null);
+  return token ?? null;
+}
+
 export async function clearToken() {
   await store.delete(TOKEN_KEY);
 }
