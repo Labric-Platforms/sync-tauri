@@ -2,6 +2,7 @@ import { Outlet, useRouter, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { getToken } from "@/lib/store";
 import { OrganizationButton } from "@/components/organization-button";
+import { useHeartbeat } from "@/hooks/useHeartbeat";
 
 export const Route = createFileRoute("/_protected")({
   component: ProtectedLayout,
@@ -11,6 +12,9 @@ function ProtectedLayout() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  // Start heartbeat service when component mounts
+  useHeartbeat("/api/sync/heartbeat");
 
   useEffect(() => {
     const checkAuth = async () => {

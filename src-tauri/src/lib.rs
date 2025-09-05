@@ -17,6 +17,12 @@ use upload::{
     UploadConfig, UploadConfigState, UploadProgress, UploadProgressState, UploadQueue,
 };
 
+mod heartbeat;
+use heartbeat::{
+    get_heartbeat_status, start_heartbeat, stop_heartbeat, update_heartbeat_config,
+    HeartbeatConfig, HeartbeatState, HeartbeatStatus, HeartbeatStatusState, HeartbeatTaskState,
+};
+
 #[derive(Clone, Serialize, Deserialize)]
 struct FileChangeEvent {
     path: String,
@@ -330,6 +336,103 @@ fn get_device_info(app_handle: AppHandle) -> Result<DeviceInfo, String> {
     })
 }
 
+#[tauri::command]
+async fn start_heartbeat_service(
+    url: String,
+    token: String,
+    app_handle: AppHandle,
+    heartbeat_state: tauri::State<'_, HeartbeatState>,
+    heartbeat_status_state: tauri::State<'_, HeartbeatStatusState>,
+    heartbeat_task_state: tauri::State<'_, HeartbeatTaskState>,
+    upload_config: tauri::State<'_, UploadConfigState>,
+) -> Result<String, String> {
+    // Get device info to build heartbeat config
+    let device_info = get_device_info(app_handle.clone())?;
+    let app_version = app_handle
+        .package_info()
+        .version
+        .to_string();
+
+    // Get server URL from upload config
+    let server_url = {
+        let config = upload_config.lock().unwrap();
+        config.server_url.clone()
+    };
+    
+    let full_url = format!("{}{}", server_url, url);
+
+    let config = HeartbeatConfig {
+        url: full_url,
+        token,
+        device_fingerprint: device_info.device_fingerprint,
+        app_version,
+    };
+
+    start_heartbeat(
+        config,
+        heartbeat_state.inner().clone(),
+        heartbeat_status_state.inner().clone(),
+        heartbeat_task_state.inner().clone(),
+        app_handle,
+    )
+    .await?;
+
+    Ok("Heartbeat started".to_string())
+}
+
+#[tauri::command]
+async fn stop_heartbeat_service(
+    heartbeat_state: tauri::State<'_, HeartbeatState>,
+    heartbeat_status_state: tauri::State<'_, HeartbeatStatusState>,
+    heartbeat_task_state: tauri::State<'_, HeartbeatTaskState>,
+) -> Result<String, String> {
+    stop_heartbeat(
+        heartbeat_state.inner().clone(),
+        heartbeat_status_state.inner().clone(),
+        heartbeat_task_state.inner().clone(),
+    )
+    .await?;
+
+    Ok("Heartbeat stopped".to_string())
+}
+
+#[tauri::command]
+async fn get_heartbeat_status_command(
+    heartbeat_status_state: tauri::State<'_, HeartbeatStatusState>,
+) -> Result<HeartbeatStatus, String> {
+    Ok(get_heartbeat_status(heartbeat_status_state.inner().clone()).await)
+}
+
+#[tauri::command]
+async fn update_heartbeat_token(
+    new_token: String,
+    heartbeat_state: tauri::State<'_, HeartbeatState>,
+    heartbeat_status_state: tauri::State<'_, HeartbeatStatusState>,
+    heartbeat_task_state: tauri::State<'_, HeartbeatTaskState>,
+    app_handle: AppHandle,
+) -> Result<String, String> {
+    // Get current config if any
+    let current_config = {
+        let state = heartbeat_state.inner().lock().await;
+        state.clone()
+    };
+
+    if let Some(mut config) = current_config {
+        config.token = new_token;
+        update_heartbeat_config(
+            config,
+            heartbeat_state.inner().clone(),
+            heartbeat_status_state.inner().clone(),
+            heartbeat_task_state.inner().clone(),
+            app_handle,
+        )
+        .await?;
+        Ok("Heartbeat token updated".to_string())
+    } else {
+        Err("No active heartbeat to update".to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let watcher_state: WatcherState = Arc::new(Mutex::new(None));
@@ -341,6 +444,13 @@ pub fn run() {
         total_failed: 0,
         current_uploading: None,
     }));
+    let heartbeat_state: HeartbeatState = Arc::new(tokio::sync::Mutex::new(None));
+    let heartbeat_status_state: HeartbeatStatusState = Arc::new(tokio::sync::Mutex::new(HeartbeatStatus {
+        status: None,
+        is_loading: false,
+        error: None,
+    }));
+    let heartbeat_task_state: HeartbeatTaskState = Arc::new(tokio::sync::Mutex::new(None));
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new().build())
@@ -355,6 +465,9 @@ pub fn run() {
         .manage(upload_queue.clone())
         .manage(upload_config.clone())
         .manage(upload_progress.clone())
+        .manage(heartbeat_state.clone())
+        .manage(heartbeat_status_state.clone())
+        .manage(heartbeat_task_state.clone())
         .invoke_handler(tauri::generate_handler![
             greet,
             read_folder_contents,
@@ -367,7 +480,11 @@ pub fn run() {
             get_upload_progress,
             clear_upload_queue,
             get_queue_size,
-            trigger_manual_upload
+            trigger_manual_upload,
+            start_heartbeat_service,
+            stop_heartbeat_service,
+            get_heartbeat_status_command,
+            update_heartbeat_token
         ])
         .setup(move |app| {
             // Start the upload processor in the background

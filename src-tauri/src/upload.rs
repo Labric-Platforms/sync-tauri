@@ -55,6 +55,8 @@ struct PresignedUrlRequest {
 struct PresignedUrlResponse {
     #[serde(rename = "uploadUrl")]
     upload_url: String,
+    #[serde(rename = "fileId")]
+    file_id: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -196,7 +198,7 @@ async fn upload_file(
     upload_item: &UploadItem,
     config: &UploadConfig,
     app_handle: &AppHandle,
-) -> Result<(), String> {
+) -> Result<String, String> {
     info!(
         "Starting upload for file: {} (attempt: {})",
         upload_item.relative_path,
@@ -333,9 +335,77 @@ async fn upload_file(
         upload_item.relative_path, file_size
     );
 
+    // Update file metadata after successful upload
+    if let Err(e) = update_file_metadata(&presigned_response.file_id, config, app_handle).await {
+        warn!(
+            "Failed to update metadata for file '{}' (file_id: {}): {}",
+            upload_item.relative_path, presigned_response.file_id, e
+        );
+        // Don't fail the entire upload if metadata update fails
+        // Just log the warning and continue
+    }
+
     // Emit upload success event
     let _ = app_handle.emit("file_uploaded", &upload_item.relative_path);
 
+    Ok(presigned_response.file_id)
+}
+
+// Function to update file metadata after successful upload
+async fn update_file_metadata(
+    file_id: &str,
+    config: &UploadConfig,
+    app_handle: &AppHandle,
+) -> Result<(), String> {
+    info!("Updating metadata for file ID: {}", file_id);
+
+    // Get token from store
+    let token = {
+        let store = app_handle.store("settings.json")
+            .map_err(|e| format!("Failed to access store: {}", e))?;
+        store.get("token").unwrap_or_default()
+    };
+
+    let client = reqwest::Client::new();
+    let metadata_url = format!("{}/api/sync/{}/update_metadata", config.server_url, file_id);
+    
+    debug!("Sending metadata update request to: {}", metadata_url);
+
+    let mut request_builder = client.post(&metadata_url);
+
+    // Add Authorization header if token exists
+    if let Some(token_str) = token.as_str() {
+        request_builder = request_builder.header("Authorization", format!("Bearer {}", token_str));
+        debug!("Added Bearer token to metadata update request");
+    }
+
+    let response = request_builder
+        .send()
+        .await
+        .map_err(|e| {
+            let error_msg = format!(
+                "Failed to send metadata update request for file ID '{}': {}",
+                file_id, e
+            );
+            error!("{}", error_msg);
+            error_msg
+        })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let response_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unable to read response".to_string());
+        let error_msg = format!(
+            "Metadata update failed for file ID '{}' with status {}: {}",
+            file_id, status, response_text
+        );
+        error!("{}", error_msg);
+        return Err(error_msg);
+    }
+
+    info!("Successfully updated metadata for file ID: {}", file_id);
     Ok(())
 }
 
@@ -433,8 +503,8 @@ pub async fn process_upload_queue(
                     let upload_result = upload_file(&item, &config_clone, &app_handle_clone).await;
 
                     match upload_result {
-                        Ok(()) => {
-                            debug!("Upload completed successfully for: {}", item.relative_path);
+                        Ok(file_id) => {
+                            debug!("Upload completed successfully for: {} (file_id: {})", item.relative_path, file_id);
                             let _ = app_handle_clone.emit("upload_success", &item.relative_path);
 
                             // Update progress

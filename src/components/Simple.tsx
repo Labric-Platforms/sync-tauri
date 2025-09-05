@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 import { FileChangeEvent } from "@/types";
 import UploadManager from "./UploadManager";
@@ -23,33 +24,26 @@ import { getRecentDirs, pushRecent } from "@/lib/store";
 export default function Simple() {
   const [selectedFolder, setSelectedFolder] = useState("");
   const [fileChanges, setFileChanges] = useState<FileChangeEvent[]>([]);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  // Removed isOnline state as it's no longer needed with Rust backend
   const [recentDirs, setRecentDirs] = useState<string[]>([]);
-
+  const [heartbeatStatus, setHeartbeatStatus] = useState<any>(null);
   useEffect(() => {
     // Listen for file change events from Tauri
-    const unlisten = listen("file_change", (event) => {
+    const unlistenFileChange = listen("file_change", (event) => {
       console.log("file_change", event);
       const fileChange = event.payload as FileChangeEvent;
       setFileChanges((prev) => [fileChange, ...prev].slice(0, 100)); // Keep only latest 100 changes
     });
 
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
-
-  useEffect(() => {
-    // Listen for online/offline events
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    // Listen for heartbeat status events from Rust backend
+    const unlistenHeartbeat = listen("heartbeat_status", (event) => {
+      console.log("heartbeat_status", event);
+      setHeartbeatStatus(event.payload);
+    });
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      unlistenFileChange.then((fn) => fn());
+      unlistenHeartbeat.then((fn) => fn());
     };
   }, []);
 
@@ -165,7 +159,7 @@ export default function Simple() {
 
   return (
     <main className="container mx-auto p-6 max-w-4xl">
-      <div className="space-y-8 mt-16 max-w-lg mx-auto">
+      <div className="space-y-8 mt-6 max-w-lg mx-auto">
         {/* Folder Selection */}
             {!selectedFolder ? (
               <Button onClick={selectFolder} className="w-full">
@@ -277,10 +271,40 @@ export default function Simple() {
       {/* VS Code Style Status Ribbon */}
       <div className="fixed bottom-0 left-0 right-0 bg-background border-t text-xs px-4 py-0.25 flex items-center justify-between z-50">
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            <span>{isOnline ? 'Connected' : 'Disconnected'}</span>
+          <Tooltip>
+            <TooltipTrigger>
+
+          <div className="flex items-center space-x-1.5">
+            <div className={`w-2 h-2 rounded-full ${heartbeatStatus?.status?.status === 'online' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span>{heartbeatStatus?.status?.status === 'online' ? 'Connected' : 'Disconnected'}</span>
           </div>
+            </TooltipTrigger>
+              <TooltipContent collisionPadding={8}>
+                {
+                  heartbeatStatus?.status?.status === 'online' ? (
+                    <>
+                      <span>Online since</span>{' '}
+                      {new Date(heartbeatStatus?.status?.first_seen).toLocaleString(
+                        undefined,
+                        { dateStyle: "short", timeStyle: "short" }
+                      )}
+                  </>
+                ) : heartbeatStatus?.status?.last_seen ? (
+                  <>
+                    <span>Offline since</span>{' '}
+                    {new Date(heartbeatStatus?.status?.last_seen).toLocaleString(
+                      undefined,
+                      { dateStyle: "short", timeStyle: "short" }
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span>Offline</span>
+                  </>
+                )
+                }
+            </TooltipContent>
+          </Tooltip>
         </div>
         <div className="flex items-center space-x-4">
           <span>{(() => {
