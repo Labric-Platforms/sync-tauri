@@ -14,43 +14,36 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+
 import { FileChangeEvent } from "@/types";
 import UploadManager from "./UploadManager";
-import UploadSettingsDialog from "./UploadSettingsDialog";
+import UploadSettingsSheet from "./UploadSettingsDialog";
 import { getRecentDirs, pushRecent } from "@/lib/store";
 
 export default function Simple() {
   const [selectedFolder, setSelectedFolder] = useState("");
-  const [isWatching, setIsWatching] = useState(false);
   const [fileChanges, setFileChanges] = useState<FileChangeEvent[]>([]);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  // Removed isOnline state as it's no longer needed with Rust backend
   const [recentDirs, setRecentDirs] = useState<string[]>([]);
-
+  const [heartbeatStatus, setHeartbeatStatus] = useState<any>(null);
   useEffect(() => {
     // Listen for file change events from Tauri
-    const unlisten = listen("file_change", (event) => {
+    const unlistenFileChange = listen("file_change", (event) => {
       console.log("file_change", event);
       const fileChange = event.payload as FileChangeEvent;
       setFileChanges((prev) => [fileChange, ...prev].slice(0, 100)); // Keep only latest 100 changes
     });
 
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
-
-  useEffect(() => {
-    // Listen for online/offline events
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    // Listen for heartbeat status events from Rust backend
+    const unlistenHeartbeat = listen("heartbeat_status", (event) => {
+      console.log("heartbeat_status", event);
+      setHeartbeatStatus(event.payload);
+    });
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      unlistenFileChange.then((fn) => fn());
+      unlistenHeartbeat.then((fn) => fn());
     };
   }, []);
 
@@ -86,7 +79,7 @@ export default function Simple() {
   async function selectAndWatchFolder(folderPath: string) {
     try {
       // Stop watching previous folder if any
-      if (isWatching) {
+      if (selectedFolder) {
         await stopWatching();
       }
 
@@ -100,7 +93,6 @@ export default function Simple() {
       // Automatically start watching the new folder
       try {
         await invoke("start_watching", { folderPath });
-        setIsWatching(true);
       } catch (err) {
         console.error("Failed to start watching:", err);
       }
@@ -116,7 +108,8 @@ export default function Simple() {
   async function stopWatching() {
     try {
       await invoke("stop_watching");
-      setIsWatching(false);
+      setSelectedFolder("");
+      setFileChanges([]);
     } catch (err) {
       console.error("Failed to stop watching:", err);
     }
@@ -154,33 +147,40 @@ export default function Simple() {
   }
 
   function getDirectoryName(path: string): string {
-    // return path.split(/[/\\]/).pop() || path;
     return path;
+  }
+
+  function truncatePathFromStart(path: string, maxLength: number = 35): string {
+    if (path.length <= maxLength) {
+      return path;
+    }
+    return '...' + path.slice(-(maxLength - 3));
   }
 
   return (
     <main className="container mx-auto p-6 max-w-4xl">
-      {/* <h1 className="text-3xl font-bold mb-6">File Watcher</h1> */}
-
-      <div className="space-y-6">
+      <div className="space-y-8 mt-6 max-w-lg mx-auto">
         {/* Folder Selection */}
-        <Card>
-          {/* <CardHeader>
-            <CardTitle>Folder Selection</CardTitle>
-            <CardDescription>
-              Choose a folder to monitor for file changes
-            </CardDescription>
-          </CardHeader> */}
-          <CardContent className="space-y-4">
-            <Button onClick={selectFolder} className="w-full sm:w-auto">
-              Select Folder
-            </Button>
+            {!selectedFolder ? (
+              <Button onClick={selectFolder} className="w-full">
+                Select Folder
+              </Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button onClick={selectFolder} className="flex-1">
+                  Change Folder
+                </Button>
+                <Button onClick={stopWatching} variant="outline" className="flex-1">
+                  Stop Watching
+                </Button>
+              </div>
+            )}
 
             {/* Recent Directories */}
             {recentDirs.length > 0 && !selectedFolder && (
               <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">Recent folders:</p>
-                <div className="flex flex-col gap-1 items-start">
+                <p className="text-xs font-medium text-muted-foreground">Recent folders</p>
+                <div className="flex flex-col gap-2 items-start">
                   {recentDirs.map((dir, index) => (
                     <button
                       key={`${dir}-${index}`}
@@ -196,30 +196,20 @@ export default function Simple() {
             )}
 
             {selectedFolder && (
-              <div className="p-3 bg-muted rounded-md">
-                <p className="text-sm text-muted-foreground mb-1">Selected Folder:</p>
-                <p className="font-mono text-sm break-all">{selectedFolder}</p>
-              </div>
-            )}
-
-            {isWatching && (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm text-green-600 font-medium">
-                    Watching for changes...
-                  </span>
+              <div className="space-y-3">
+                <div className="">
+                  <p className="text-xs text-muted-foreground mb-1">Currently watching</p>
+                    
+                  <p className="text-sm font-semibold break-all">{selectedFolder}</p>
                 </div>
-                <Button onClick={stopWatching} variant="outline" size="sm">
-                  Stop Watching
-                </Button>
+                
+                
+                  
               </div>
             )}
-          </CardContent>
-        </Card>
 
         {/* File Changes */}
-        {isWatching && (
+        {selectedFolder && (
           <Card>
             <CardHeader>
               <CardTitle>File Changes</CardTitle>
@@ -229,8 +219,8 @@ export default function Simple() {
             </CardHeader>
             <CardContent>
               {fileChanges.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">
-                  Loading folder contents...
+                <p className="text-muted-foreground text-center text-sm py-4">
+                  No files found
                 </p>
               ) : (
                 <ScrollArea className="h-96">
@@ -238,14 +228,17 @@ export default function Simple() {
                     {fileChanges.map((change, index) => (
                       <div
                         key={`${change.path}-${change.timestamp}-${index}`}
-                        className="flex items-center justify-between py-2 rounded-sm"
+                        className="flex items-center py-2 rounded-sm w-full"
                       >
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {getRelativePath(change.path)}
+                        <div className="flex-1 min-w-0 pr-3">
+                          <p 
+                            className="text-sm font-medium truncate"
+                            title={getRelativePath(change.path)}
+                          >
+                            {truncatePathFromStart(getRelativePath(change.path))}
                           </p>
                         </div>
-                        <div className="flex items-center gap-3 ml-4">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           <Badge
                             variant="secondary"
                             className={`${getEventTypeColor(
@@ -268,38 +261,61 @@ export default function Simple() {
         )}
 
         {/* Upload Management */}
-        {isWatching && (
-          <UploadManager />
+        {selectedFolder && (
+          <div className="mb-8">
+            <UploadManager />
+          </div>
         )}
       </div>
 
       {/* VS Code Style Status Ribbon */}
       <div className="fixed bottom-0 left-0 right-0 bg-background border-t text-xs px-4 py-0.25 flex items-center justify-between z-50">
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            <span>{isOnline ? 'Connected' : 'Disconnected'}</span>
+          <Tooltip>
+            <TooltipTrigger>
+
+          <div className="flex items-center space-x-1.5">
+            <div className={`w-2 h-2 rounded-full ${heartbeatStatus?.status?.status === 'online' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span>{heartbeatStatus?.status?.status === 'online' ? 'Connected' : 'Disconnected'}</span>
           </div>
+            </TooltipTrigger>
+              <TooltipContent collisionPadding={8}>
+                {
+                  heartbeatStatus?.status?.status === 'online' ? (
+                    <>
+                      <span>Online since</span>{' '}
+                      {new Date(heartbeatStatus?.status?.first_seen).toLocaleString(
+                        undefined,
+                        { dateStyle: "short", timeStyle: "short" }
+                      )}
+                  </>
+                ) : heartbeatStatus?.status?.last_seen ? (
+                  <>
+                    <span>Offline since</span>{' '}
+                    {new Date(heartbeatStatus?.status?.last_seen).toLocaleString(
+                      undefined,
+                      { dateStyle: "short", timeStyle: "short" }
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span>Offline</span>
+                  </>
+                )
+                }
+            </TooltipContent>
+          </Tooltip>
         </div>
         <div className="flex items-center space-x-4">
           <span>{(() => {
             const actualChanges = fileChanges.filter(change => change.event_type !== 'initial').length;
             return actualChanges >= 100 ? '100+' : actualChanges;
           })()} changes detected</span>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div>
-                <UploadSettingsDialog>
-                  <button className="hover:bg-muted p-1 rounded">
-                    <Settings2Icon className="w-3 h-3" />
-                  </button>
-                </UploadSettingsDialog>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Upload Settings</p>
-            </TooltipContent>
-          </Tooltip>
+          <UploadSettingsSheet>
+            <button className="hover:bg-muted p-1 rounded">
+              <Settings2Icon className="w-3 h-3" />
+            </button>
+          </UploadSettingsSheet>
         </div>
       </div>
     </main>

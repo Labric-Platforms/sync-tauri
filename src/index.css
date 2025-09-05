@@ -118,3 +118,13 @@
     @apply bg-background text-foreground;
   }
 }
+
+html {
+  overscroll-behavior: none;
+}
+
+:root {
+  -webkit-user-select: none;
+  user-select: none;
+}
+

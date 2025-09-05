@@ -2,7 +2,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -59,8 +58,13 @@ function UploadManager() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Upload Status</CardTitle>
-        <CardDescription>Current upload system status and controls</CardDescription>
+        <CardTitle className="flex items-center gap-2 w-full justify-between">
+          Upload Status
+        <Button onClick={handleClearQueue} variant="outline" size="sm">
+            Clear Queue ({queueSize})
+          </Button>
+        </CardTitle>
+        {/* <CardDescription>Current upload system status and controls</CardDescription> */}
       </CardHeader>
       <CardContent className="space-y-4">
 
@@ -88,11 +92,6 @@ function UploadManager() {
           </div>
         )}
 
-        <div className="flex gap-2">
-          <Button onClick={handleClearQueue} variant="outline" size="sm">
-            Clear Queue ({queueSize})
-          </Button>
-        </div>
       </CardContent>
     </Card>
   );
