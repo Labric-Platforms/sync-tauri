@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
+use crc32c::crc32c;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UploadConfig {
@@ -49,13 +50,15 @@ struct PresignedUrlRequest {
     file_name: String,
     #[serde(rename = "contentType")]
     content_type: String,
+    #[serde(rename = "crc32c")]
+    crc32c: String,
 }
 
 #[derive(Serialize, Deserialize)]
 struct PresignedUrlResponse {
-    #[serde(rename = "uploadUrl")]
+    #[serde(rename = "upload_url")]
     upload_url: String,
-    #[serde(rename = "fileId")]
+    #[serde(rename = "file_id")]
     file_id: String,
 }
 
@@ -110,6 +113,12 @@ pub fn get_relative_path(absolute_path: &str, base_path: &str) -> String {
     }
 
     absolute_path.to_string()
+}
+
+// Helper function to compute CRC32C hash of file content
+fn compute_crc32c_hash(data: &[u8]) -> String {
+    let hash = crc32c(data);
+    format!("{:08x}", hash)
 }
 
 // Synchronous function to add file to upload queue (for file watcher callback)
@@ -224,11 +233,19 @@ async fn upload_file(
         content_type, upload_item.relative_path
     );
 
+    // Compute CRC32C hash of the file content
+    let crc32c_hash = compute_crc32c_hash(&file_content);
+    debug!(
+        "Computed CRC32C hash '{}' for file: {}",
+        crc32c_hash, upload_item.relative_path
+    );
+
     // Get presigned URL
     let client = reqwest::Client::new();
     let presigned_request = PresignedUrlRequest {
         file_name: upload_item.relative_path.clone(),
         content_type: content_type.clone(),
+        crc32c: crc32c_hash,
     };
 
     let presigned_url = format!("{}/api/sync/get_presigned", config.server_url);
