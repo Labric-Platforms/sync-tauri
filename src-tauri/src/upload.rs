@@ -8,6 +8,7 @@ use tauri_plugin_store::StoreExt;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
 use crc32c::crc32c;
+use base64::{engine::general_purpose, Engine as _};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UploadConfig {
@@ -116,9 +117,11 @@ pub fn get_relative_path(absolute_path: &str, base_path: &str) -> String {
 }
 
 // Helper function to compute CRC32C hash of file content
+// Returns base64-encoded big-endian bytes to match Google Cloud Storage format
 fn compute_crc32c_hash(data: &[u8]) -> String {
     let hash = crc32c(data);
-    format!("{:08x}", hash)
+    let hash_bytes = hash.to_be_bytes(); // Convert to big-endian byte order
+    general_purpose::STANDARD.encode(&hash_bytes) // Base64 encode
 }
 
 // Synchronous function to add file to upload queue (for file watcher callback)
