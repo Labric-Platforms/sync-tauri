@@ -212,10 +212,10 @@ export default function Simple() {
         {selectedFolder && (
           <Card>
             <CardHeader>
-              <CardTitle>File Changes</CardTitle>
-              <CardDescription>
-                Real-time file system changes in the selected folder
-              </CardDescription>
+              <CardTitle>Logs</CardTitle>
+              {/* <CardDescription>
+                Real-time file changes and upload status
+              </CardDescription> */}
             </CardHeader>
             <CardContent>
               {fileChanges.length === 0 ? (
@@ -223,7 +223,7 @@ export default function Simple() {
                   No files found
                 </p>
               ) : (
-                <ScrollArea className="h-96">
+                <ScrollArea className="max-h-96">
                   <div className="space-y-1">
                     {fileChanges.map((change, index) => (
                       <div
