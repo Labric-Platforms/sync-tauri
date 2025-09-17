@@ -217,13 +217,13 @@ export default function Simple() {
                 Real-time file changes and upload status
               </CardDescription> */}
             </CardHeader>
-            <CardContent>
+            <CardContent className="max-h-96 overflow-y-auto">
               {fileChanges.length === 0 ? (
                 <p className="text-muted-foreground text-center text-sm py-4">
                   No files found
                 </p>
               ) : (
-                <ScrollArea className="max-h-96">
+
                   <div className="space-y-1">
                     {fileChanges.map((change, index) => (
                       <div
@@ -254,7 +254,6 @@ export default function Simple() {
                       </div>
                     ))}
                   </div>
-                </ScrollArea>
               )}
             </CardContent>
           </Card>
