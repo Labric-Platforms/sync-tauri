@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,7 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
     updateUploadDelay,
     updateIgnoredPatterns,
     toggleUploads,
+    toggleIgnoreExistingFiles,
   } = useUploadManager();
 
   const [delayInput, setDelayInput] = useState("");
@@ -35,18 +36,26 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
   const [newPattern, setNewPattern] = useState("");
 
   // Initialize inputs when config loads
-  useState(() => {
+  useEffect(() => {
     if (config) {
       setDelayInput((config.upload_delay_ms / 1000).toString());
       setConcurrencyInput(config.max_concurrent_uploads.toString());
     }
-  });
+  }, [config]);
 
   const handleToggleUploads = async (checked: boolean) => {
     try {
       await toggleUploads(checked);
     } catch (err) {
       console.error("Failed to toggle uploads:", err);
+    }
+  };
+
+  const handleToggleIgnoreExisting = async (checked: boolean) => {
+    try {
+      await toggleIgnoreExistingFiles(checked);
+    } catch (err) {
+      console.error("Failed to toggle ignore existing files:", err);
     }
   };
 
@@ -147,7 +156,7 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
               <div className="space-y-0.5">
                 <div className="text-sm font-medium">Enable Uploads</div>
                 <div className="text-sm text-muted-foreground">
-                  {config.enabled ? "Files will be uploaded on change" : "Files will not be uploaded on change"}
+                  {config.enabled ? "Files are being uploaded on change" : "Files are not being uploaded on change"}
                 </div>
               </div>
               <Switch
@@ -155,6 +164,20 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
                 onCheckedChange={handleToggleUploads}
               />
             </div>
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="text-sm font-medium">Ignore Files Already in the Folder</div>
+                <div className="text-sm text-muted-foreground">
+                  {config.ignore_existing_files ? "Files already in the folder are not uploaded" : "Files already in the folder are uploaded"}
+                </div>
+              </div>
+              <Switch
+                checked={config.ignore_existing_files}
+                onCheckedChange={handleToggleIgnoreExisting}
+              />
+            </div>
+
           </div>
 
           <Separator />

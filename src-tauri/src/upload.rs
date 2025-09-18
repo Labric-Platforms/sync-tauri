@@ -7,6 +7,8 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
+use crc32c::crc32c;
+use base64::{engine::general_purpose, Engine as _};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UploadConfig {
@@ -15,6 +17,7 @@ pub struct UploadConfig {
     pub ignored_patterns: Vec<String>,
     pub upload_delay_ms: u64, // Delay before uploading to batch changes
     pub max_concurrent_uploads: usize, // Maximum number of concurrent uploads
+    pub ignore_existing_files: bool, // Whether to ignore existing files when a folder is selected
 }
 
 impl Default for UploadConfig {
@@ -31,6 +34,7 @@ impl Default for UploadConfig {
             ],
             upload_delay_ms: 2000,     // 2 seconds delay
             max_concurrent_uploads: 5, // Default to 5 concurrent uploads
+            ignore_existing_files: false, // By default, existing files should be uploaded
         }
     }
 }
@@ -49,14 +53,22 @@ struct PresignedUrlRequest {
     file_name: String,
     #[serde(rename = "contentType")]
     content_type: String,
+    #[serde(rename = "crc32c")]
+    crc32c: String,
 }
 
 #[derive(Serialize, Deserialize)]
 struct PresignedUrlResponse {
-    #[serde(rename = "uploadUrl")]
-    upload_url: String,
-    #[serde(rename = "fileId")]
+    success: bool,
+    message: String,
+    #[serde(rename = "upload_url")]
+    upload_url: Option<String>,
+    #[serde(rename = "file_id")]
     file_id: String,
+    #[serde(rename = "uploadUrl")]
+    upload_url_alt: Option<String>, // Alternative field name in response
+    #[serde(rename = "fileId")]
+    file_id_alt: Option<String>, // Alternative field name in response
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -67,9 +79,34 @@ pub struct UploadProgress {
     pub current_uploading: Option<String>,
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct FileUploadStatus {
+    pub relative_path: String,
+    pub status: String, // "pending" | "queued" | "uploading" | "uploaded" | "failed"
+    pub error: Option<String>,
+}
+
 pub type UploadQueue = Arc<Mutex<VecDeque<UploadItem>>>;
 pub type UploadConfigState = Arc<Mutex<UploadConfig>>;
 pub type UploadProgressState = Arc<Mutex<UploadProgress>>;
+
+// Helper function to emit file upload status events
+pub fn emit_file_upload_status(
+    relative_path: &str,
+    status: &str,
+    error: Option<String>,
+    app_handle: &AppHandle,
+) {
+    let upload_status = FileUploadStatus {
+        relative_path: relative_path.to_string(),
+        status: status.to_string(),
+        error,
+    };
+    
+    if let Err(e) = app_handle.emit("file_upload_status", &upload_status) {
+        warn!("Failed to emit file upload status event: {}", e);
+    }
+}
 
 // Helper function to check if a file should be ignored
 pub fn should_ignore_file(file_path: &str, ignored_patterns: &[String]) -> bool {
@@ -112,17 +149,52 @@ pub fn get_relative_path(absolute_path: &str, base_path: &str) -> String {
     absolute_path.to_string()
 }
 
+// Helper function to compute CRC32C hash of file content
+// Returns base64-encoded big-endian bytes to match Google Cloud Storage format
+fn compute_crc32c_hash(data: &[u8]) -> String {
+    let hash = crc32c(data);
+    let hash_bytes = hash.to_be_bytes(); // Convert to big-endian byte order
+    general_purpose::STANDARD.encode(&hash_bytes) // Base64 encode
+}
+
 // Synchronous function to add file to upload queue (for file watcher callback)
 pub fn add_to_upload_queue_sync(
     file_path: String,
     base_path: String,
     upload_queue: &UploadQueue,
     upload_config: &UploadConfigState,
+    app_handle: &AppHandle,
+) {
+    add_to_upload_queue_with_event_type(file_path, base_path, upload_queue, upload_config, "modified", app_handle);
+}
+
+// Enhanced function that accepts event type for more granular control
+pub fn add_to_upload_queue_with_event_type(
+    file_path: String,
+    base_path: String,
+    upload_queue: &UploadQueue,
+    upload_config: &UploadConfigState,
+    event_type: &str,
+    app_handle: &AppHandle,
 ) {
     let config = upload_config.lock().unwrap().clone();
 
     if !config.enabled {
         debug!("Upload is disabled, skipping file: {}", file_path);
+        
+        let relative_path = get_relative_path(&file_path, &base_path);
+        // Emit ignored status for this file since uploads are disabled
+        emit_file_upload_status(&relative_path, "ignored", None, app_handle);
+        return;
+    }
+
+    // Skip initial files if ignore_existing_files is enabled
+    if config.ignore_existing_files && event_type == "initial" {
+        debug!("Ignoring existing file due to ignore_existing_files setting: {}", file_path);
+        
+        let relative_path = get_relative_path(&file_path, &base_path);
+        // Emit ignored status for this file
+        emit_file_upload_status(&relative_path, "ignored", None, app_handle);
         return;
     }
 
@@ -134,6 +206,9 @@ pub fn add_to_upload_queue_sync(
             "File '{}' matches ignore pattern, skipping upload",
             relative_path
         );
+        
+        // Emit ignored status for this file
+        emit_file_upload_status(&relative_path, "ignored", None, app_handle);
         return;
     }
 
@@ -173,8 +248,13 @@ pub fn add_to_upload_queue_sync(
                         queue.len()
                     );
                 }
+
+                // Emit queued status for this file
+                emit_file_upload_status(&relative_path, "queued", None, app_handle);
             } else {
                 debug!("Path '{}' is not a file, skipping upload", relative_path);
+                // Emit ignored status for non-files (directories, etc.)
+                emit_file_upload_status(&relative_path, "ignored", None, app_handle);
             }
         }
         Err(e) => {
@@ -189,8 +269,9 @@ pub async fn add_to_upload_queue_async(
     base_path: String,
     upload_queue: &UploadQueue,
     upload_config: &UploadConfigState,
+    app_handle: &AppHandle,
 ) {
-    add_to_upload_queue_sync(file_path, base_path, upload_queue, upload_config);
+    add_to_upload_queue_sync(file_path, base_path, upload_queue, upload_config, app_handle);
 }
 
 // Function to upload a single file
@@ -204,6 +285,9 @@ async fn upload_file(
         upload_item.relative_path,
         upload_item.retry_count + 1
     );
+
+    // Emit uploading status
+    emit_file_upload_status(&upload_item.relative_path, "uploading", None, app_handle);
 
     // Read file content
     let file_content = tokio::fs::read(&upload_item.path).await.map_err(|e| {
@@ -224,11 +308,19 @@ async fn upload_file(
         content_type, upload_item.relative_path
     );
 
+    // Compute CRC32C hash of the file content
+    let crc32c_hash = compute_crc32c_hash(&file_content);
+    debug!(
+        "Computed CRC32C hash '{}' for file: {}",
+        crc32c_hash, upload_item.relative_path
+    );
+
     // Get presigned URL
     let client = reqwest::Client::new();
     let presigned_request = PresignedUrlRequest {
         file_name: upload_item.relative_path.clone(),
         content_type: content_type.clone(),
+        crc32c: crc32c_hash,
     };
 
     let presigned_url = format!("{}/api/sync/get_presigned", config.server_url);
@@ -289,10 +381,51 @@ async fn upload_file(
         error_msg
     })?;
 
+    // Get the actual file_id and upload_url, handling both field name variants
+    let file_id = if !presigned_response.file_id.is_empty() {
+        presigned_response.file_id.clone()
+    } else if let Some(alt_id) = presigned_response.file_id_alt {
+        alt_id
+    } else {
+        return Err("No file_id found in response".to_string());
+    };
+
+    let upload_url = presigned_response.upload_url
+        .or(presigned_response.upload_url_alt);
+
+    // Check if file is already synced
+    if presigned_response.success && presigned_response.message == "File already synced" {
+        info!(
+            "File '{}' is already synced (file_id: {}), skipping upload",
+            upload_item.relative_path, file_id
+        );
+        
+        // Emit upload success event for already synced file
+        let _ = app_handle.emit("file_uploaded", &upload_item.relative_path);
+        
+        // Emit uploaded status for already synced file
+        emit_file_upload_status(&upload_item.relative_path, "uploaded", None, app_handle);
+        
+        return Ok(file_id);
+    }
+
+    // Check if we have an upload URL for new files
+    let upload_url = match upload_url {
+        Some(url) => url,
+        None => {
+            let error_msg = format!(
+                "No upload URL provided for file '{}' but file is not already synced",
+                upload_item.relative_path
+            );
+            error!("{}", error_msg);
+            return Err(error_msg);
+        }
+    };
+
     debug!(
         "Got presigned URL for file: {} (URL length: {})",
         upload_item.relative_path,
-        presigned_response.upload_url.len()
+        upload_url.len()
     );
 
     // Upload file to presigned URL
@@ -302,7 +435,7 @@ async fn upload_file(
     );
 
     let upload_response = client
-        .put(&presigned_response.upload_url)
+        .put(&upload_url)
         .header("Content-Type", content_type)
         .body(file_content)
         .send()
@@ -336,10 +469,10 @@ async fn upload_file(
     );
 
     // Update file metadata after successful upload
-    if let Err(e) = update_file_metadata(&presigned_response.file_id, config, app_handle).await {
+    if let Err(e) = update_file_metadata(&file_id, config, app_handle).await {
         warn!(
             "Failed to update metadata for file '{}' (file_id: {}): {}",
-            upload_item.relative_path, presigned_response.file_id, e
+            upload_item.relative_path, file_id, e
         );
         // Don't fail the entire upload if metadata update fails
         // Just log the warning and continue
@@ -347,8 +480,11 @@ async fn upload_file(
 
     // Emit upload success event
     let _ = app_handle.emit("file_uploaded", &upload_item.relative_path);
+    
+    // Emit uploaded status
+    emit_file_upload_status(&upload_item.relative_path, "uploaded", None, app_handle);
 
-    Ok(presigned_response.file_id)
+    Ok(file_id)
 }
 
 // Function to update file metadata after successful upload
@@ -539,7 +675,10 @@ pub async fn process_upload_queue(
                                 );
 
                                 let _ = app_handle_clone
-                                    .emit("upload_failed", (&item.relative_path, e));
+                                    .emit("upload_failed", (&item.relative_path, e.clone()));
+
+                                // Emit failed status
+                                emit_file_upload_status(&item.relative_path, "failed", Some(e), &app_handle_clone);
 
                                 // Update failed count
                                 {
@@ -617,12 +756,14 @@ pub async fn trigger_manual_upload(
     base_path: String,
     upload_queue: tauri::State<'_, UploadQueue>,
     upload_config: tauri::State<'_, UploadConfigState>,
+    app_handle: AppHandle,
 ) -> Result<String, String> {
     add_to_upload_queue_async(
         file_path.clone(),
         base_path,
         upload_queue.inner(),
         upload_config.inner(),
+        &app_handle,
     )
     .await;
     Ok(format!("File queued for upload: {}", file_path))
