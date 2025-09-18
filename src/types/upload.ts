@@ -4,6 +4,7 @@ export interface UploadConfig {
   ignored_patterns: string[];
   upload_delay_ms: number;
   max_concurrent_uploads: number;
+  ignore_existing_files: boolean;
 }
 
 export interface UploadProgress {
@@ -23,4 +24,10 @@ export interface UploadItem {
 export interface UploadEvent {
   type: 'upload_progress' | 'upload_success' | 'upload_failed' | 'file_uploaded';
   payload: any;
+}
+
+export interface FileUploadStatus {
+  relative_path: string;
+  status: 'pending' | 'queued' | 'uploading' | 'uploaded' | 'failed' | 'ignored';
+  error?: string;
 } 

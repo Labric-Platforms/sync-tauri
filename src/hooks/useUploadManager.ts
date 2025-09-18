@@ -132,6 +132,14 @@ export function useUploadManager() {
     await updateConfig(newConfig);
   }, [config, updateConfig]);
 
+  // Toggle ignore existing files
+  const toggleIgnoreExistingFiles = useCallback(async (ignore: boolean) => {
+    if (!config) return;
+    
+    const newConfig = { ...config, ignore_existing_files: ignore };
+    await updateConfig(newConfig);
+  }, [config, updateConfig]);
+
   return {
     config,
     progress,
@@ -142,6 +150,7 @@ export function useUploadManager() {
     clearQueue,
     triggerManualUpload,
     toggleUploads,
+    toggleIgnoreExistingFiles,
     updateIgnoredPatterns,
     updateServerUrl,
     updateUploadDelay,

@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 mod upload;
 use upload::{
-    add_to_upload_queue_sync, clear_upload_queue, get_queue_size, get_upload_config,
+    add_to_upload_queue_sync, add_to_upload_queue_with_event_type, clear_upload_queue, get_queue_size, get_upload_config,
     get_upload_progress, process_upload_queue, set_upload_config, trigger_manual_upload,
     UploadConfig, UploadConfigState, UploadProgress, UploadProgressState, UploadQueue,
 };
@@ -99,8 +99,8 @@ async fn start_watching(
         *watcher = None;
     }
 
-    // First, capture initial folder contents
-    capture_initial_contents(&folder_path, &app_handle)?;
+    // First, capture initial folder contents and optionally queue for upload
+    capture_initial_contents(&folder_path, &app_handle, upload_queue.inner(), upload_config.inner())?;
 
     let app_handle_clone = app_handle.clone();
     let upload_queue_clone = upload_queue.inner().clone();
@@ -138,7 +138,7 @@ async fn start_watching(
                     let config = upload_config_clone.clone();
 
                     // Add to queue synchronously (async work will be done by background processor)
-                    add_to_upload_queue_sync(file_path, base_path, &queue, &config);
+                    add_to_upload_queue_sync(file_path, base_path, &queue, &config, &app_handle_clone);
                 }
             }
         }
@@ -159,10 +159,21 @@ async fn start_watching(
     Ok(format!("Started watching: {}", folder_path))
 }
 
-fn capture_initial_contents(folder_path: &str, app_handle: &AppHandle) -> Result<(), String> {
+fn capture_initial_contents(
+    folder_path: &str, 
+    app_handle: &AppHandle,
+    upload_queue: &UploadQueue,
+    upload_config: &UploadConfigState,
+) -> Result<(), String> {
     use std::fs;
 
-    fn walk_directory(dir: &Path, app_handle: &AppHandle) -> std::io::Result<()> {
+    fn walk_directory(
+        dir: &Path, 
+        app_handle: &AppHandle,
+        base_path: &str,
+        upload_queue: &UploadQueue,
+        upload_config: &UploadConfigState,
+    ) -> std::io::Result<()> {
         if dir.is_dir() {
             for entry in fs::read_dir(dir)? {
                 let entry = entry?;
@@ -181,7 +192,18 @@ fn capture_initial_contents(folder_path: &str, app_handle: &AppHandle) -> Result
                 let _ = app_handle.emit("file_change", &file_change);
 
                 if path.is_dir() {
-                    walk_directory(&path, app_handle)?;
+                    walk_directory(&path, app_handle, base_path, upload_queue, upload_config)?;
+                } else {
+                    // Queue initial files for upload if ignore_existing_files is false
+                    let file_path_str = path.to_string_lossy().to_string();
+                    add_to_upload_queue_with_event_type(
+                        file_path_str,
+                        base_path.to_string(),
+                        upload_queue,
+                        upload_config,
+                        "initial",
+                        app_handle,
+                    );
                 }
             }
         }
@@ -189,7 +211,7 @@ fn capture_initial_contents(folder_path: &str, app_handle: &AppHandle) -> Result
     }
 
     let path = Path::new(folder_path);
-    walk_directory(path, app_handle)
+    walk_directory(path, app_handle, folder_path, upload_queue, upload_config)
         .map_err(|e| format!("Failed to capture initial contents: {}", e))?;
 
     Ok(())
