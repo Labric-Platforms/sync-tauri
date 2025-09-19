@@ -324,7 +324,7 @@ export default function Simple() {
             <h3 className="text-lg font-semibold m-0 mt-8 mb-2">Logs</h3>
             <div
               ref={logsRef}
-              className="sticky top-0 bg-background m-0 mb-2 space-y-3 py-2"
+              className="sticky top-0 bg-background m-0 mb-2 space-y-3 py-2 z-40"
             >
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
