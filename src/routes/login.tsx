@@ -229,7 +229,7 @@ function Login() {
         Enter this code at{" "}
         <button
           onClick={handleOpenEnrollPage}
-          className="text-blue-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
+          className="text-info hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
         >
           labric.co/enroll
         </button>

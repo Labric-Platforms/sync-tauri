@@ -39,7 +39,7 @@ function UploadManager() {
     return (
       <Card>
         <CardContent className="p-6">
-          <p className="text-red-500">Error: {error}</p>
+          <p className="text-destructive">Error: {error}</p>
         </CardContent>
       </Card>
     );
@@ -77,11 +77,11 @@ function UploadManager() {
             </div>
             <div>
               <span className="text-muted-foreground">Uploaded:</span>
-              <p className="font-medium text-green-600">{progress.total_uploaded}</p>
+              <p className="font-medium text-success">{progress.total_uploaded}</p>
             </div>
             <div>
               <span className="text-muted-foreground">Failed:</span>
-              <p className="font-medium text-red-600">{progress.total_failed}</p>
+              <p className="font-medium text-destructive">{progress.total_failed}</p>
             </div>
             <div>
               <span className="text-muted-foreground">Current:</span>

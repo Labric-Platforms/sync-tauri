@@ -228,12 +228,12 @@ export default function Simple() {
       uploaded: {
         icon: CheckCircle,
         tooltip: "Successfully uploaded",
-        className: "text-green-500",
+        className: "text-success",
       },
       failed: {
         icon: XCircle,
         tooltip: "Upload failed",
-        className: "text-red-500",
+        className: "text-destructive",
       },
       ignored: {
         icon: EyeOff,
@@ -403,8 +403,8 @@ export default function Simple() {
                 <div
                   className={`w-2 h-2 rounded-full ${
                     heartbeatStatus?.status?.status === "online"
-                      ? "bg-green-500"
-                      : "bg-red-500"
+                      ? "bg-success"
+                      : "bg-destructive"
                   }`}
                 ></div>
                 <span>
