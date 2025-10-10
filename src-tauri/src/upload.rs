@@ -27,7 +27,6 @@ impl Default for UploadConfig {
             server_url: "https://platform.labric.co".to_string(),
             ignored_patterns: vec![
                 "*.tmp".to_string(),
-                "*.log".to_string(),
                 ".git/**".to_string(),
                 "node_modules/**".to_string(),
                 ".DS_Store".to_string(),
