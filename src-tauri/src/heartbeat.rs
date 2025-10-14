@@ -7,6 +7,10 @@ use tokio::sync::Mutex;
 use tokio::time::{interval, MissedTickBehavior};
 use tokio::task::JoinHandle;
 
+// Heartbeat configuration constants
+const HEARTBEAT_INTERVAL_SECS: u64 = 30;
+const OFFLINE_STATUS: &str = "offline";
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct HeartbeatRequest {
     device_fingerprint: String,
@@ -65,7 +69,7 @@ pub async fn start_heartbeat(
     let app_handle_clone = app_handle.clone();
 
     let task_handle = tokio::spawn(async move {
-        let mut interval = interval(Duration::from_secs(30));
+        let mut interval = interval(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
         interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
         loop {
@@ -105,7 +109,7 @@ pub async fn start_heartbeat(
                         // Create failed status, preserving previous response if it exists
                         let failed_response = if let Some(mut prev_response) = previous_response {
                             // Keep previous data but update status to indicate failure
-                            prev_response.status = "offline".to_string();
+                            prev_response.status = OFFLINE_STATUS.to_string();
                             Some(prev_response)
                         } else {
                             None

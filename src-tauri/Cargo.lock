@@ -2386,7 +2386,7 @@ dependencies = [
 
 [[package]]
 name = "labric-sync-tauri"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "base64 0.21.7",
  "crc32c",

@@ -10,6 +10,19 @@ use sysinfo::System;
 use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
 
+// File system constants
+const DEVICE_ID_FILENAME: &str = "device_id.txt";
+
+// Event type constants
+const EVENT_TYPE_CREATED: &str = "created";
+const EVENT_TYPE_MODIFIED: &str = "modified";
+const EVENT_TYPE_DELETED: &str = "deleted";
+const EVENT_TYPE_INITIAL: &str = "initial";
+const EVENT_TYPE_OTHER: &str = "other";
+
+// Memory conversion constant
+const BYTES_TO_GB_DIVISOR: u64 = 1024 * 1024 * 1024;
+
 mod upload;
 use upload::{
     add_to_upload_queue_sync, add_to_upload_queue_with_event_type, clear_upload_queue, get_queue_size, get_upload_config,
@@ -111,10 +124,10 @@ async fn start_watching(
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
         if let Ok(event) = res {
             let event_type = match event.kind {
-                notify::EventKind::Create(_) => "created",
-                notify::EventKind::Modify(_) => "modified",
-                notify::EventKind::Remove(_) => "deleted",
-                _ => "other",
+                notify::EventKind::Create(_) => EVENT_TYPE_CREATED,
+                notify::EventKind::Modify(_) => EVENT_TYPE_MODIFIED,
+                notify::EventKind::Remove(_) => EVENT_TYPE_DELETED,
+                _ => EVENT_TYPE_OTHER,
             };
 
             for path in event.paths {
@@ -131,7 +144,7 @@ async fn start_watching(
                 let _ = app_handle_clone.emit("file_change", &file_change);
 
                 // Queue for upload if it's a created or modified file
-                if event_type == "created" || event_type == "modified" {
+                if event_type == EVENT_TYPE_CREATED || event_type == EVENT_TYPE_MODIFIED {
                     let file_path = path.to_string_lossy().to_string();
                     let base_path = folder_path_clone.clone();
                     let queue = upload_queue_clone.clone();
@@ -182,7 +195,7 @@ fn capture_initial_contents(
                 // Emit initial file as "initial" event type
                 let file_change = FileChangeEvent {
                     path: path.to_string_lossy().to_string(),
-                    event_type: "initial".to_string(),
+                    event_type: EVENT_TYPE_INITIAL.to_string(),
                     timestamp: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
@@ -201,7 +214,7 @@ fn capture_initial_contents(
                         base_path.to_string(),
                         upload_queue,
                         upload_config,
-                        "initial",
+                        EVENT_TYPE_INITIAL,
                         app_handle,
                     );
                 }
@@ -235,7 +248,7 @@ fn get_device_id_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
             .map_err(|e| format!("Failed to create app directory: {}", e))?;
     }
 
-    Ok(app_data_dir.join("device_id.txt"))
+    Ok(app_data_dir.join(DEVICE_ID_FILENAME))
 }
 
 fn get_device_id(app_handle: &AppHandle) -> Result<String, String> {
@@ -351,7 +364,7 @@ fn get_device_info(app_handle: AppHandle) -> Result<DeviceInfo, String> {
         release,
         arch: arch.to_string(),
         cpus: sys.cpus().len(),
-        total_memory: sys.total_memory() / (1024 * 1024 * 1024), // Convert to GB
+        total_memory: sys.total_memory() / BYTES_TO_GB_DIVISOR, // Convert to GB
         os_type: platform.to_string(),
         device_id,
         device_fingerprint,
