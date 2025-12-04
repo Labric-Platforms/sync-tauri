@@ -52,7 +52,7 @@ impl Default for UploadConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            server_url: "http://localhost:3000".to_string(),
+            server_url: "https://platform.labric.co".to_string(),
             ignored_patterns: vec![
                 "*.tmp".to_string(),
                 ".git/**".to_string(),
