@@ -289,12 +289,12 @@ export default function Simple() {
             <p className="text-xs font-medium text-muted-foreground">
               Recent folders
             </p>
-            <div className="flex flex-col gap-2 items-start">
+            <div className="flex flex-col gap-2 items-start w-full">
               {recentDirs.map((dir, index) => (
                 <button
                   key={`${dir}-${index}`}
                   onClick={() => selectRecentFolder(dir)}
-                  className="text-xs text-muted-foreground hover:underline"
+                  className="text-xs text-muted-foreground hover:underline text-left"
                   title={dir}
                 >
                   {getDirectoryName(dir)}

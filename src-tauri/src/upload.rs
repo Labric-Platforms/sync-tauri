@@ -9,6 +9,7 @@ use tokio::sync::Semaphore;
 use tokio::time::sleep;
 use crc32c::crc32c;
 use base64::{engine::general_purpose, Engine as _};
+use chrono::{DateTime, Utc};
 
 // Upload processing constants
 const MAX_BATCH_SIZE: usize = 1000;
@@ -51,7 +52,7 @@ impl Default for UploadConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            server_url: "https://platform.labric.co".to_string(),
+            server_url: "http://localhost:3000".to_string(),
             ignored_patterns: vec![
                 "*.tmp".to_string(),
                 ".git/**".to_string(),
@@ -81,6 +82,10 @@ struct PresignedUrlRequest {
     content_type: String,
     #[serde(rename = "crc32c")]
     crc32c: String,
+    #[serde(rename = "fileCreatedAt", skip_serializing_if = "Option::is_none")]
+    file_created_at: Option<String>,
+    #[serde(rename = "fileModifiedAt", skip_serializing_if = "Option::is_none")]
+    file_modified_at: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -106,6 +111,10 @@ struct FileCheckItem {
     content_type: String,
     #[serde(rename = "crc32c")]
     crc32c: Option<String>,
+    #[serde(rename = "fileCreatedAt", skip_serializing_if = "Option::is_none")]
+    file_created_at: Option<String>,
+    #[serde(rename = "fileModifiedAt", skip_serializing_if = "Option::is_none")]
+    file_modified_at: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -215,6 +224,35 @@ fn compute_crc32c_hash(data: &[u8]) -> String {
     general_purpose::STANDARD.encode(&hash_bytes) // Base64 encode
 }
 
+// Helper function to convert SystemTime to ISO 8601 string format
+fn system_time_to_iso8601(time: SystemTime) -> Option<String> {
+    match time.duration_since(UNIX_EPOCH) {
+        Ok(duration) => {
+            let datetime: DateTime<Utc> = DateTime::from_timestamp(
+                duration.as_secs() as i64,
+                duration.subsec_nanos(),
+            )?;
+            Some(datetime.to_rfc3339())
+        }
+        Err(_) => None,
+    }
+}
+
+// Helper function to get file timestamps (created and modified)
+async fn get_file_timestamps(path: &str) -> (Option<String>, Option<String>) {
+    match tokio::fs::metadata(path).await {
+        Ok(metadata) => {
+            let created_at = metadata.created().ok().and_then(system_time_to_iso8601);
+            let modified_at = metadata.modified().ok().and_then(system_time_to_iso8601);
+            (created_at, modified_at)
+        }
+        Err(e) => {
+            warn!("Failed to get file timestamps for '{}': {}", path, e);
+            (None, None)
+        }
+    }
+}
+
 // Batch function to get presigned URLs for multiple files
 async fn get_presigned_urls_batch(
     items: Vec<UploadItem>,
@@ -237,11 +275,16 @@ async fn get_presigned_urls_batch(
             Ok(file_content) => {
                 let content_type = get_content_type(&item.path);
                 let crc32c_hash = compute_crc32c_hash(&file_content);
+                
+                // Get file created/modified timestamps
+                let (file_created_at, file_modified_at) = get_file_timestamps(&item.path).await;
 
                 file_check_items.push(FileCheckItem {
                     file_name: item.relative_path.clone(),
                     content_type,
                     crc32c: Some(crc32c_hash),
+                    file_created_at,
+                    file_modified_at,
                 });
                 valid_items.push(item);
             }
