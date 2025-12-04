@@ -74,34 +74,6 @@ pub struct UploadItem {
     pub retry_count: u32,
 }
 
-#[derive(Serialize, Deserialize)]
-struct PresignedUrlRequest {
-    #[serde(rename = "fileName")]
-    file_name: String,
-    #[serde(rename = "contentType")]
-    content_type: String,
-    #[serde(rename = "crc32c")]
-    crc32c: String,
-    #[serde(rename = "fileCreatedAt", skip_serializing_if = "Option::is_none")]
-    file_created_at: Option<String>,
-    #[serde(rename = "fileModifiedAt", skip_serializing_if = "Option::is_none")]
-    file_modified_at: Option<String>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct PresignedUrlResponse {
-    success: bool,
-    message: String,
-    #[serde(rename = "upload_url")]
-    upload_url: Option<String>,
-    #[serde(rename = "file_id")]
-    file_id: String,
-    #[serde(rename = "uploadUrl")]
-    upload_url_alt: Option<String>, // Alternative field name in response
-    #[serde(rename = "fileId")]
-    file_id_alt: Option<String>, // Alternative field name in response
-}
-
 // Batch request/response structs for /api/sync/get_presigned_batch
 #[derive(Serialize, Deserialize)]
 struct FileCheckItem {
