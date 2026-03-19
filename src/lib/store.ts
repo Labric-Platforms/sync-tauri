@@ -12,7 +12,7 @@ export interface CustomJwtPayload extends JwtPayload {
   scope?: string;
 }
 
-const store = new LazyStore("settings.json", { autoSave: true }); // debounce-saving, 100 ms
+const store = new LazyStore("settings.json", { autoSave: true, defaults: {} }); // debounce-saving, 100 ms
 
 export async function get<T>(key: string, fallback: T): Promise<T> {
   const v = await store.get<T>(key);
