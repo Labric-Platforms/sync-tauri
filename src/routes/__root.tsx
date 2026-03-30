@@ -2,6 +2,7 @@ import { createRootRoute, Outlet } from "@tanstack/react-router";
 // import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { useAppUpdater } from "@/hooks/useAppUpdater";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
 
 export const Route = createRootRoute({
@@ -11,12 +12,14 @@ export const Route = createRootRoute({
 
     return (
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {/* child routes render here */}
-          <Outlet />
+          <TooltipProvider>
+            {/* child routes render here */}
+            <Outlet />
 
-          {/* devtools are auto-stripped in prod builds */}
-          {/* {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />} */}
-          <Toaster />
+            {/* devtools are auto-stripped in prod builds */}
+            {/* {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />} */}
+            <Toaster />
+          </TooltipProvider>
         </ThemeProvider>
     );
   },

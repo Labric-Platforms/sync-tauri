@@ -48,7 +48,7 @@ function ProtectedLayout() {
     return (
       <div>
         <header className="container mx-auto p-6 pb-0 max-w-6xl flex justify-between items-center">
-          <h1 className="text-2xl font-semibold">File Watcher</h1>
+          <h1>File Watcher</h1>
         </header>
       </div>
     );
