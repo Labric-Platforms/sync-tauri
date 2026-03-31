@@ -299,9 +299,13 @@ pub fn add_to_upload_queue_with_event_type(
 
             emit_file_upload_status(&relative_path, STATUS_QUEUED, None, app_handle);
         }
+        Ok(metadata) if metadata.is_dir() => {
+            debug!("Path '{relative_path}' is a directory, skipping upload");
+            emit_file_upload_status(&relative_path, STATUS_DIRECTORY, None, app_handle);
+        }
         Ok(_) => {
             debug!("Path '{relative_path}' is not a file, skipping upload");
-            emit_file_upload_status(&relative_path, STATUS_DIRECTORY, None, app_handle);
+            emit_file_upload_status(&relative_path, STATUS_IGNORED, None, app_handle);
         }
         Err(e) => {
             warn!("Failed to get metadata for file '{relative_path}': {e}");
