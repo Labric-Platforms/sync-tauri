@@ -412,7 +412,7 @@ export default function Simple() {
         <div className="flex items-center space-x-4">
           <Tooltip>
             <TooltipTrigger>
-              <div className="flex items-center space-x-1.5">
+              <div className="flex items-center space-x-2">
                 <div
                   className={`w-2 h-2 rounded-full ${heartbeatStatus?.status?.status === "online"
                       ? "bg-success"
