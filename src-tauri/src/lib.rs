@@ -1,4 +1,3 @@
-use machine_uid;
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -14,20 +13,24 @@ use uuid::Uuid;
 const DEVICE_ID_FILENAME: &str = "device_id.txt";
 
 // Event type constants
-const EVENT_TYPE_CREATED: &str = "created";
-const EVENT_TYPE_MODIFIED: &str = "modified";
-const EVENT_TYPE_DELETED: &str = "deleted";
-const EVENT_TYPE_INITIAL: &str = "initial";
+pub const EVENT_TYPE_CREATED: &str = "created";
+pub const EVENT_TYPE_MODIFIED: &str = "modified";
+pub const EVENT_TYPE_DELETED: &str = "deleted";
+pub const EVENT_TYPE_INITIAL: &str = "initial";
 const EVENT_TYPE_OTHER: &str = "other";
 
 // Memory conversion constant
 const BYTES_TO_GB_DIVISOR: u64 = 1024 * 1024 * 1024;
 
+mod http_client;
+use http_client::{create_shared_client, SharedHttpClient};
+
 mod upload;
 use upload::{
-    add_to_upload_queue_sync, add_to_upload_queue_with_event_type, clear_upload_queue, get_queue_size, get_upload_config,
-    get_upload_progress, process_upload_queue, set_upload_config, trigger_manual_upload,
-    UploadConfig, UploadConfigState, UploadProgress, UploadProgressState, UploadQueue,
+    add_to_upload_queue_sync, add_to_upload_queue_with_event_type, clear_upload_queue,
+    get_queue_size, get_upload_config, get_upload_progress, process_upload_queue,
+    set_upload_config, trigger_manual_upload, UploadConfig, UploadConfigState, UploadProgress,
+    UploadProgressState, UploadQueue,
 };
 
 mod heartbeat;
@@ -59,45 +62,6 @@ struct DeviceInfo {
 // Global watcher state
 type WatcherState = Arc<Mutex<Option<RecommendedWatcher>>>;
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
-fn read_folder_contents(folder_path: String) -> Result<Vec<String>, String> {
-    let path = Path::new(&folder_path);
-
-    if !path.exists() {
-        return Err("Folder does not exist".to_string());
-    }
-
-    if !path.is_dir() {
-        return Err("Path is not a directory".to_string());
-    }
-
-    match fs::read_dir(path) {
-        Ok(entries) => {
-            let mut contents = Vec::new();
-            for entry in entries {
-                match entry {
-                    Ok(entry) => {
-                        let file_name = entry.file_name().to_string_lossy().to_string();
-                        let is_dir = entry.path().is_dir();
-                        let entry_type = if is_dir { "📁" } else { "📄" };
-                        contents.push(format!("{} {}", entry_type, file_name));
-                    }
-                    Err(_) => continue,
-                }
-            }
-            contents.sort();
-            Ok(contents)
-        }
-        Err(e) => Err(format!("Failed to read directory: {}", e)),
-    }
-}
-
 #[tauri::command]
 async fn start_watching(
     folder_path: String,
@@ -113,7 +77,12 @@ async fn start_watching(
     }
 
     // First, capture initial folder contents and optionally queue for upload
-    capture_initial_contents(&folder_path, &app_handle, upload_queue.inner(), upload_config.inner())?;
+    capture_initial_contents(
+        &folder_path,
+        &app_handle,
+        upload_queue.inner(),
+        upload_config.inner(),
+    )?;
 
     let app_handle_clone = app_handle.clone();
     let upload_queue_clone = upload_queue.inner().clone();
@@ -151,17 +120,23 @@ async fn start_watching(
                     let config = upload_config_clone.clone();
 
                     // Add to queue synchronously (async work will be done by background processor)
-                    add_to_upload_queue_sync(file_path, base_path, &queue, &config, &app_handle_clone);
+                    add_to_upload_queue_sync(
+                        file_path,
+                        base_path,
+                        &queue,
+                        &config,
+                        &app_handle_clone,
+                    );
                 }
             }
         }
     })
-    .map_err(|e| format!("Failed to create watcher: {}", e))?;
+    .map_err(|e| format!("Failed to create watcher: {e}"))?;
 
     // Start watching the folder
     watcher
         .watch(Path::new(&folder_path), RecursiveMode::Recursive)
-        .map_err(|e| format!("Failed to watch folder: {}", e))?;
+        .map_err(|e| format!("Failed to watch folder: {e}"))?;
 
     // Store the watcher
     {
@@ -169,63 +144,47 @@ async fn start_watching(
         *watcher_state = Some(watcher);
     }
 
-    Ok(format!("Started watching: {}", folder_path))
+    Ok(format!("Started watching: {folder_path}"))
 }
 
 fn capture_initial_contents(
-    folder_path: &str, 
+    folder_path: &str,
     app_handle: &AppHandle,
     upload_queue: &UploadQueue,
     upload_config: &UploadConfigState,
 ) -> Result<(), String> {
-    use std::fs;
+    let mut dirs_to_visit = vec![PathBuf::from(folder_path)];
 
-    fn walk_directory(
-        dir: &Path, 
-        app_handle: &AppHandle,
-        base_path: &str,
-        upload_queue: &UploadQueue,
-        upload_config: &UploadConfigState,
-    ) -> std::io::Result<()> {
-        if dir.is_dir() {
-            for entry in fs::read_dir(dir)? {
-                let entry = entry?;
-                let path = entry.path();
+    while let Some(dir) = dirs_to_visit.pop() {
+        let entries =
+            fs::read_dir(&dir).map_err(|e| format!("Failed to read directory {dir:?}: {e}"))?;
 
-                // Emit initial file as "initial" event type
-                let file_change = FileChangeEvent {
-                    path: path.to_string_lossy().to_string(),
-                    event_type: EVENT_TYPE_INITIAL.to_string(),
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let file_change = FileChangeEvent {
+                path: path.to_string_lossy().to_string(),
+                event_type: EVENT_TYPE_INITIAL.to_string(),
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            };
+            let _ = app_handle.emit("file_change", &file_change);
 
-                let _ = app_handle.emit("file_change", &file_change);
-
-                if path.is_dir() {
-                    walk_directory(&path, app_handle, base_path, upload_queue, upload_config)?;
-                } else {
-                    // Queue initial files for upload if ignore_existing_files is false
-                    let file_path_str = path.to_string_lossy().to_string();
-                    add_to_upload_queue_with_event_type(
-                        file_path_str,
-                        base_path.to_string(),
-                        upload_queue,
-                        upload_config,
-                        EVENT_TYPE_INITIAL,
-                        app_handle,
-                    );
-                }
+            if path.is_dir() {
+                dirs_to_visit.push(path);
+            } else {
+                add_to_upload_queue_with_event_type(
+                    path.to_string_lossy().to_string(),
+                    folder_path.to_string(),
+                    upload_queue,
+                    upload_config,
+                    EVENT_TYPE_INITIAL,
+                    app_handle,
+                );
             }
         }
-        Ok(())
     }
-
-    let path = Path::new(folder_path);
-    walk_directory(path, app_handle, folder_path, upload_queue, upload_config)
-        .map_err(|e| format!("Failed to capture initial contents: {}", e))?;
 
     Ok(())
 }
@@ -241,11 +200,11 @@ fn get_device_id_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
-        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+        .map_err(|e| format!("Failed to get app data directory: {e}"))?;
 
     if !app_data_dir.exists() {
         fs::create_dir_all(&app_data_dir)
-            .map_err(|e| format!("Failed to create app directory: {}", e))?;
+            .map_err(|e| format!("Failed to create app directory: {e}"))?;
     }
 
     Ok(app_data_dir.join(DEVICE_ID_FILENAME))
@@ -255,44 +214,23 @@ fn get_device_id(app_handle: &AppHandle) -> Result<String, String> {
     let id_file_path = get_device_id_path(app_handle)?;
 
     if id_file_path.exists() {
-        fs::read_to_string(&id_file_path)
-            .map_err(|e| format!("Failed to read device ID file: {}", e))
+        fs::read_to_string(&id_file_path).map_err(|e| format!("Failed to read device ID file: {e}"))
     } else {
         let new_id = Uuid::new_v4().to_string();
         fs::write(&id_file_path, &new_id)
-            .map_err(|e| format!("Failed to write device ID file: {}", e))?;
+            .map_err(|e| format!("Failed to write device ID file: {e}"))?;
         Ok(new_id)
     }
 }
 
 fn get_device_fingerprint() -> Result<String, String> {
-    let machine_id = machine_uid::get().map_err(|e| format!("Failed to get machine ID: {}", e))?;
+    let machine_id = machine_uid::get().map_err(|e| format!("Failed to get machine ID: {e}"))?;
 
     let mut hasher = Sha256::new();
     hasher.update(machine_id.as_bytes());
     let result = hasher.finalize();
 
-    Ok(format!("{:x}", result))
-}
-
-#[tauri::command]
-fn get_hostname() -> Result<String, String> {
-    use std::env;
-
-    // Try different environment variables for hostname
-    if let Ok(hostname) = env::var("HOSTNAME") {
-        return Ok(hostname);
-    }
-    if let Ok(hostname) = env::var("COMPUTERNAME") {
-        return Ok(hostname);
-    }
-
-    // Try using sysinfo
-    let mut sys = System::new();
-    sys.refresh_all();
-
-    // Fallback to "Unknown"
-    Ok("Unknown".to_string())
+    Ok(format!("{result:x}"))
 }
 
 #[tauri::command]
@@ -372,10 +310,12 @@ fn get_device_info(app_handle: AppHandle) -> Result<DeviceInfo, String> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn start_heartbeat_service(
     url: String,
     token: String,
     app_handle: AppHandle,
+    http_client: tauri::State<'_, SharedHttpClient>,
     heartbeat_state: tauri::State<'_, HeartbeatState>,
     heartbeat_status_state: tauri::State<'_, HeartbeatStatusState>,
     heartbeat_task_state: tauri::State<'_, HeartbeatTaskState>,
@@ -383,18 +323,15 @@ async fn start_heartbeat_service(
 ) -> Result<String, String> {
     // Get device info to build heartbeat config
     let device_info = get_device_info(app_handle.clone())?;
-    let app_version = app_handle
-        .package_info()
-        .version
-        .to_string();
+    let app_version = app_handle.package_info().version.to_string();
 
     // Get server URL from upload config
     let server_url = {
         let config = upload_config.lock().unwrap();
         config.server_url.clone()
     };
-    
-    let full_url = format!("{}{}", server_url, url);
+
+    let full_url = format!("{server_url}{url}");
 
     let config = HeartbeatConfig {
         url: full_url,
@@ -405,6 +342,7 @@ async fn start_heartbeat_service(
 
     start_heartbeat(
         config,
+        http_client.inner().clone(),
         heartbeat_state.inner().clone(),
         heartbeat_status_state.inner().clone(),
         heartbeat_task_state.inner().clone(),
@@ -441,12 +379,12 @@ async fn get_heartbeat_status_command(
 #[tauri::command]
 async fn update_heartbeat_token(
     new_token: String,
+    http_client: tauri::State<'_, SharedHttpClient>,
     heartbeat_state: tauri::State<'_, HeartbeatState>,
     heartbeat_status_state: tauri::State<'_, HeartbeatStatusState>,
     heartbeat_task_state: tauri::State<'_, HeartbeatTaskState>,
     app_handle: AppHandle,
 ) -> Result<String, String> {
-    // Get current config if any
     let current_config = {
         let state = heartbeat_state.inner().lock().await;
         state.clone()
@@ -456,6 +394,7 @@ async fn update_heartbeat_token(
         config.token = new_token;
         update_heartbeat_config(
             config,
+            http_client.inner().clone(),
             heartbeat_state.inner().clone(),
             heartbeat_status_state.inner().clone(),
             heartbeat_task_state.inner().clone(),
@@ -479,12 +418,14 @@ pub fn run() {
         total_failed: 0,
         current_uploading: None,
     }));
+    let http_client = create_shared_client();
     let heartbeat_state: HeartbeatState = Arc::new(tokio::sync::Mutex::new(None));
-    let heartbeat_status_state: HeartbeatStatusState = Arc::new(tokio::sync::Mutex::new(HeartbeatStatus {
-        status: None,
-        is_loading: false,
-        error: None,
-    }));
+    let heartbeat_status_state: HeartbeatStatusState =
+        Arc::new(tokio::sync::Mutex::new(HeartbeatStatus {
+            status: None,
+            is_loading: false,
+            error: None,
+        }));
     let heartbeat_task_state: HeartbeatTaskState = Arc::new(tokio::sync::Mutex::new(None));
 
     let app = tauri::Builder::default()
@@ -497,6 +438,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(watcher_state)
+        .manage(http_client.clone())
         .manage(upload_queue.clone())
         .manage(upload_config.clone())
         .manage(upload_progress.clone())
@@ -504,11 +446,8 @@ pub fn run() {
         .manage(heartbeat_status_state.clone())
         .manage(heartbeat_task_state.clone())
         .invoke_handler(tauri::generate_handler![
-            greet,
-            read_folder_contents,
             start_watching,
             stop_watching,
-            get_hostname,
             get_device_info,
             get_upload_config,
             set_upload_config,
@@ -526,6 +465,7 @@ pub fn run() {
             let upload_queue_clone = upload_queue.clone();
             let upload_config_clone = upload_config.clone();
             let upload_progress_clone = upload_progress.clone();
+            let http_client_clone = http_client.clone();
             let app_handle = app.handle().clone();
 
             tauri::async_runtime::spawn(async move {
@@ -533,6 +473,7 @@ pub fn run() {
                     upload_queue_clone,
                     upload_config_clone,
                     upload_progress_clone,
+                    http_client_clone,
                     app_handle,
                 )
                 .await;
