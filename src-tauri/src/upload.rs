@@ -1,4 +1,5 @@
 use base64::{engine::general_purpose, Engine as _};
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use crc32c::crc32c;
 use log::{debug, error, info, warn};
@@ -136,7 +137,7 @@ struct GetPresignedBatchResponse {
 /// An upload item paired with its already-read file content, to avoid reading twice.
 struct PreparedUpload {
     item: UploadItem,
-    file_content: Vec<u8>,
+    file_content: Bytes,
     content_type: String,
 }
 
@@ -320,8 +321,8 @@ async fn prepare_batch_items(items: Vec<UploadItem>) -> Vec<(PreparedUpload, Fil
     let mut prepared = Vec::with_capacity(items.len());
 
     for item in items {
-        let file_content = match tokio::fs::read(&item.path).await {
-            Ok(content) => content,
+        let file_content: Bytes = match tokio::fs::read(&item.path).await {
+            Ok(content) => content.into(),
             Err(e) => {
                 warn!(
                     "Failed to read file '{}' for batch request: {}",
@@ -433,7 +434,7 @@ async fn get_presigned_urls_batch(
 #[allow(clippy::too_many_arguments)]
 async fn upload_file(
     item: &UploadItem,
-    file_content: Vec<u8>,
+    file_content: Bytes,
     content_type: &str,
     upload_url: &str,
     file_id: &str,
