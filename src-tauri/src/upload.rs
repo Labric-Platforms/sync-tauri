@@ -3,8 +3,9 @@ use chrono::{DateTime, Utc};
 use crc32c::crc32c;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
+use parking_lot::Mutex;
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_store::StoreExt;
@@ -247,7 +248,7 @@ pub fn add_to_upload_queue_with_event_type(
     event_type: &str,
     app_handle: &AppHandle,
 ) {
-    let config = upload_config.lock().unwrap().clone();
+    let config = upload_config.lock().clone();
     let relative_path = get_relative_path(&file_path, &base_path);
 
     if !config.enabled {
@@ -278,7 +279,7 @@ pub fn add_to_upload_queue_with_event_type(
                 retry_count: 0,
             };
 
-            let mut queue = upload_queue.lock().unwrap();
+            let mut queue = upload_queue.lock();
             let had_duplicate = queue.iter().any(|item| item.path == file_path);
             queue.retain(|item| item.path != file_path);
             queue.push_back(upload_item);
@@ -559,8 +560,8 @@ fn emit_progress(
     upload_queue: &UploadQueue,
     app_handle: &AppHandle,
 ) {
-    let mut progress = upload_progress.lock().unwrap();
-    progress.total_queued = upload_queue.lock().unwrap().len();
+    let mut progress = upload_progress.lock();
+    progress.total_queued = upload_queue.lock().len();
     let _ = app_handle.emit("upload_progress", &*progress);
 }
 
@@ -575,7 +576,7 @@ pub async fn process_upload_queue(
     let mut last_max_concurrent = DEFAULT_MAX_CONCURRENT_UPLOADS;
 
     loop {
-        let config = upload_config.lock().unwrap().clone();
+        let config = upload_config.lock().clone();
 
         if !config.enabled {
             sleep(DISABLED_CHECK_INTERVAL).await;
@@ -589,7 +590,7 @@ pub async fn process_upload_queue(
         }
 
         let ready_items = {
-            let mut queue = upload_queue.lock().unwrap();
+            let mut queue = upload_queue.lock();
             collect_ready_items(&mut queue, config.upload_delay_ms)
         };
 
@@ -610,7 +611,7 @@ pub async fn process_upload_queue(
                 Err(e) => {
                     error!("Batch presigned request failed: {e}");
                     {
-                        let mut queue = upload_queue.lock().unwrap();
+                        let mut queue = upload_queue.lock();
                         for item in ready_items {
                             queue.push_back(item);
                         }
@@ -646,7 +647,7 @@ pub async fn process_upload_queue(
                     &app_handle,
                 );
                 {
-                    let mut progress = upload_progress.lock().unwrap();
+                    let mut progress = upload_progress.lock();
                     progress.total_uploaded += 1;
                     let _ = app_handle.emit("upload_progress", &*progress);
                 }
@@ -666,7 +667,6 @@ pub async fn process_upload_queue(
                     );
                     upload_queue
                         .lock()
-                        .unwrap()
                         .push_back(prepared.item.clone());
                     continue;
                 }
@@ -705,9 +705,9 @@ pub async fn process_upload_queue(
                         );
                         let _ = app_clone.emit("upload_success", &item.relative_path);
                         {
-                            let mut progress = progress_clone.lock().unwrap();
+                            let mut progress = progress_clone.lock();
                             progress.total_uploaded += 1;
-                            progress.total_queued = queue_clone.lock().unwrap().len();
+                            progress.total_queued = queue_clone.lock().len();
                             let _ = app_clone.emit("upload_progress", &*progress);
                         }
                     }
@@ -719,7 +719,7 @@ pub async fn process_upload_queue(
                                 item.relative_path, item.retry_count, MAX_RETRY_COUNT, e
                             );
                             item.timestamp = now_millis();
-                            queue_clone.lock().unwrap().push_back(item);
+                            queue_clone.lock().push_back(item);
                         } else {
                             error!(
                                 "Upload permanently failed for '{}' after {} attempts: {}",
@@ -734,9 +734,9 @@ pub async fn process_upload_queue(
                                 &app_clone,
                             );
                             {
-                                let mut progress = progress_clone.lock().unwrap();
+                                let mut progress = progress_clone.lock();
                                 progress.total_failed += 1;
-                                progress.total_queued = queue_clone.lock().unwrap().len();
+                                progress.total_queued = queue_clone.lock().len();
                                 let _ = app_clone.emit("upload_progress", &*progress);
                             }
                         }
@@ -759,7 +759,7 @@ pub async fn process_upload_queue(
 pub fn get_upload_config(
     upload_config: tauri::State<'_, UploadConfigState>,
 ) -> Result<UploadConfig, String> {
-    Ok(upload_config.lock().unwrap().clone())
+    Ok(upload_config.lock().clone())
 }
 
 #[tauri::command]
@@ -767,7 +767,7 @@ pub fn set_upload_config(
     config: UploadConfig,
     upload_config: tauri::State<'_, UploadConfigState>,
 ) -> Result<String, String> {
-    *upload_config.lock().unwrap() = config;
+    *upload_config.lock() = config;
     Ok("Upload configuration updated".to_string())
 }
 
@@ -775,18 +775,18 @@ pub fn set_upload_config(
 pub fn get_upload_progress(
     upload_progress: tauri::State<'_, UploadProgressState>,
 ) -> Result<UploadProgress, String> {
-    Ok(upload_progress.lock().unwrap().clone())
+    Ok(upload_progress.lock().clone())
 }
 
 #[tauri::command]
 pub fn clear_upload_queue(upload_queue: tauri::State<'_, UploadQueue>) -> Result<String, String> {
-    upload_queue.lock().unwrap().clear();
+    upload_queue.lock().clear();
     Ok("Upload queue cleared".to_string())
 }
 
 #[tauri::command]
 pub fn get_queue_size(upload_queue: tauri::State<'_, UploadQueue>) -> Result<usize, String> {
-    Ok(upload_queue.lock().unwrap().len())
+    Ok(upload_queue.lock().len())
 }
 
 #[tauri::command]

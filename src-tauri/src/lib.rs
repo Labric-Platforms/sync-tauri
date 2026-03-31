@@ -1,10 +1,11 @@
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use parking_lot::Mutex;
 use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use sysinfo::System;
 use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
@@ -72,7 +73,7 @@ async fn start_watching(
 ) -> Result<String, String> {
     // Stop any existing watcher
     {
-        let mut watcher = watcher_state.lock().unwrap();
+        let mut watcher = watcher_state.lock();
         *watcher = None;
     }
 
@@ -140,7 +141,7 @@ async fn start_watching(
 
     // Store the watcher
     {
-        let mut watcher_state = watcher_state.lock().unwrap();
+        let mut watcher_state = watcher_state.lock();
         *watcher_state = Some(watcher);
     }
 
@@ -193,7 +194,7 @@ fn capture_initial_contents(
 
 #[tauri::command]
 async fn stop_watching(watcher_state: tauri::State<'_, WatcherState>) -> Result<String, String> {
-    let mut watcher = watcher_state.lock().unwrap();
+    let mut watcher = watcher_state.lock();
     *watcher = None;
     Ok("Stopped watching".to_string())
 }
@@ -329,7 +330,7 @@ async fn start_heartbeat_service(
 
     // Get server URL from upload config
     let server_url = {
-        let config = upload_config.lock().unwrap();
+        let config = upload_config.lock();
         config.server_url.clone()
     };
 
