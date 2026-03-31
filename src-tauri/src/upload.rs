@@ -203,11 +203,11 @@ fn system_time_to_iso8601(time: SystemTime) -> Option<String> {
     Some(datetime.to_rfc3339())
 }
 
-fn now_secs() -> u64 {
+fn now_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_secs()
+        .as_millis() as u64
 }
 
 fn get_auth_token(app_handle: &AppHandle) -> Result<Option<String>, String> {
@@ -273,7 +273,7 @@ pub fn add_to_upload_queue_with_event_type(
             let upload_item = UploadItem {
                 path: file_path.clone(),
                 relative_path: relative_path.clone(),
-                timestamp: now_secs(),
+                timestamp: now_millis(),
                 retry_count: 0,
             };
 
@@ -518,16 +518,13 @@ async fn update_file_metadata(
 
 /// Drain up to MAX_BATCH_SIZE items that have aged past the upload delay.
 fn collect_ready_items(queue: &mut VecDeque<UploadItem>, delay_ms: u64) -> Vec<UploadItem> {
-    let now_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64;
+    let now_ms = now_millis();
 
     let mut ready = Vec::new();
     let mut indices_to_remove = Vec::new();
 
     for (index, item) in queue.iter().enumerate() {
-        let item_age_ms = now_ms - (item.timestamp * 1000);
+        let item_age_ms = now_ms.saturating_sub(item.timestamp);
         if item_age_ms >= delay_ms {
             ready.push(item.clone());
             indices_to_remove.push(index);
@@ -716,7 +713,7 @@ pub async fn process_upload_queue(
                                 "Upload failed for '{}' (attempt {}/{}), will retry: {}",
                                 item.relative_path, item.retry_count, MAX_RETRY_COUNT, e
                             );
-                            item.timestamp = now_secs();
+                            item.timestamp = now_millis();
                             queue_clone.lock().unwrap().push_back(item);
                         } else {
                             error!(
