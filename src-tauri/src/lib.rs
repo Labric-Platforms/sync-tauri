@@ -5,6 +5,7 @@ use parking_lot::Mutex;
 use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use sysinfo::{CpuRefreshKind, System};
 use tauri::menu::{Menu, MenuItem};
@@ -400,6 +401,8 @@ async fn update_heartbeat_token(
     }
 }
 
+struct QuitFlag(AtomicBool);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let watcher_state: WatcherState = Arc::new(Mutex::new(None));
@@ -431,6 +434,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .manage(QuitFlag(AtomicBool::new(false)))
         .manage(watcher_state)
         .manage(http_client.clone())
         .manage(upload_queue.clone())
@@ -489,6 +493,9 @@ pub fn run() {
                         }
                     }
                     "quit" => {
+                        if let Some(flag) = app.try_state::<QuitFlag>() {
+                            flag.0.store(true, Ordering::SeqCst);
+                        }
                         app.exit(0);
                     }
                     _ => {}
@@ -523,6 +530,11 @@ pub fn run() {
 
     app.run(|_app_handle, event| match &event {
         tauri::RunEvent::ExitRequested { api, .. } => {
+            if let Some(flag) = _app_handle.try_state::<QuitFlag>() {
+                if flag.0.load(Ordering::SeqCst) {
+                    return;
+                }
+            }
             api.prevent_exit();
         }
         #[cfg(target_os = "macos")]
