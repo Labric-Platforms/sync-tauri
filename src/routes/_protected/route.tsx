@@ -56,7 +56,6 @@ function ProtectedLayout() {
 
   return (
     <>
-
       {/* simple header */}
       <header className="container mx-auto p-6 pb-0 max-w-6xl flex justify-between items-center">
         <nav className="flex items-center gap-4 justify-between w-full">

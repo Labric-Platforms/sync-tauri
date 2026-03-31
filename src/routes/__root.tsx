@@ -4,6 +4,7 @@ import { useAppUpdater } from "@/hooks/useAppUpdater";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export const Route = createRootRoute({
   component: () => {
@@ -13,11 +14,13 @@ export const Route = createRootRoute({
     return (
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <TooltipProvider>
-            {/* child routes render here */}
-            <Outlet />
+            <ScrollArea className="h-screen">
+              {/* child routes render here */}
+              <Outlet />
 
-            {/* devtools are auto-stripped in prod builds */}
-            {/* {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />} */}
+              {/* devtools are auto-stripped in prod builds */}
+              {/* {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />} */}
+            </ScrollArea>
             <Toaster />
           </TooltipProvider>
         </ThemeProvider>
