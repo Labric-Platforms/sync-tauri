@@ -109,32 +109,38 @@ async fn start_watching(
     // Create file watcher — callback only emits the event and sends to the channel,
     // never blocks on queue/config locks
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
-        if let Ok(event) = res {
-            let event_type = match event.kind {
-                notify::EventKind::Create(_) => EVENT_TYPE_CREATED,
-                notify::EventKind::Modify(_) => EVENT_TYPE_MODIFIED,
-                notify::EventKind::Remove(_) => EVENT_TYPE_DELETED,
-                _ => EVENT_TYPE_OTHER,
+        let event = match res {
+            Ok(event) => event,
+            Err(e) => {
+                log::error!("File watcher error: {e}");
+                return;
+            }
+        };
+
+        let event_type = match event.kind {
+            notify::EventKind::Create(_) => EVENT_TYPE_CREATED,
+            notify::EventKind::Modify(_) => EVENT_TYPE_MODIFIED,
+            notify::EventKind::Remove(_) => EVENT_TYPE_DELETED,
+            _ => EVENT_TYPE_OTHER,
+        };
+
+        for path in event.paths {
+            let file_change = FileChangeEvent {
+                path: path.to_string_lossy().to_string(),
+                event_type: event_type.to_string(),
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
             };
 
-            for path in event.paths {
-                let file_change = FileChangeEvent {
-                    path: path.to_string_lossy().to_string(),
-                    event_type: event_type.to_string(),
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                };
+            // Send to frontend immediately — never blocked by queue locks
+            let _ = app_handle_clone.emit("file_change", &file_change);
 
-                // Send to frontend immediately — never blocked by queue locks
-                let _ = app_handle_clone.emit("file_change", &file_change);
-
-                // Queue for upload via channel (non-blocking send)
-                if event_type == EVENT_TYPE_CREATED || event_type == EVENT_TYPE_MODIFIED {
-                    let file_path = path.to_string_lossy().to_string();
-                    let _ = watcher_tx.send((file_path, folder_path_clone.clone()));
-                }
+            // Queue for upload via channel (non-blocking send)
+            if event_type == EVENT_TYPE_CREATED || event_type == EVENT_TYPE_MODIFIED {
+                let file_path = path.to_string_lossy().to_string();
+                let _ = watcher_tx.send((file_path, folder_path_clone.clone()));
             }
         }
     })
