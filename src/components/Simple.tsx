@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
+import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -142,7 +142,6 @@ export default function Simple() {
   >(new Map());
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const logsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Listen for file change events from Tauri
     const unlistenFileChange = listen("file_change", (event) => {
@@ -195,14 +194,13 @@ export default function Simple() {
   }, []);
 
   useEffect(() => {
-    // Handle scroll to show/hide scroll-to-top button
+    const viewport = document.querySelector('#root-scroll-area [data-slot="scroll-area-viewport"]');
+    if (!viewport) return;
     const handleScroll = () => {
-      // Show button if user has scrolled down more than 200px
-      setShowScrollToTop(window.scrollY > 200);
+      setShowScrollToTop(viewport.scrollTop > 200);
     };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    viewport.addEventListener("scroll", handleScroll);
+    return () => viewport.removeEventListener("scroll", handleScroll);
   }, []);
 
   async function loadRecentDirs() {
@@ -273,7 +271,7 @@ export default function Simple() {
   }
 
   function scrollToTop() {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    document.querySelector('#root-scroll-area [data-slot="scroll-area-viewport"]')?.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   const getUploadStatus = useCallback(
@@ -352,7 +350,6 @@ export default function Simple() {
         {selectedFolder && (
           <>
             <div
-              ref={logsRef}
               className="sticky top-0 m-0 space-y-3 my-2 pb-2 z-40"
             >
               <div className="relative rounded-full bg-background">
