@@ -90,7 +90,24 @@ async fn start_watching(
     let upload_config_clone = upload_config.inner().clone();
     let folder_path_clone = folder_path.clone();
 
-    // Create file watcher
+    // Channel to move work off the watcher callback thread so it never blocks
+    let (watcher_tx, mut watcher_rx) =
+        tokio::sync::mpsc::unbounded_channel::<(String, String)>();
+
+    // Spawn a task that drains the channel and queues uploads without blocking the watcher
+    {
+        let queue = upload_queue_clone.clone();
+        let config = upload_config_clone.clone();
+        let app = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            while let Some((file_path, base_path)) = watcher_rx.recv().await {
+                add_to_upload_queue_sync(file_path, base_path, &queue, &config, &app);
+            }
+        });
+    }
+
+    // Create file watcher — callback only emits the event and sends to the channel,
+    // never blocks on queue/config locks
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
         if let Ok(event) = res {
             let event_type = match event.kind {
@@ -110,24 +127,13 @@ async fn start_watching(
                         .as_secs(),
                 };
 
-                // Send to frontend
+                // Send to frontend immediately — never blocked by queue locks
                 let _ = app_handle_clone.emit("file_change", &file_change);
 
-                // Queue for upload if it's a created or modified file
+                // Queue for upload via channel (non-blocking send)
                 if event_type == EVENT_TYPE_CREATED || event_type == EVENT_TYPE_MODIFIED {
                     let file_path = path.to_string_lossy().to_string();
-                    let base_path = folder_path_clone.clone();
-                    let queue = upload_queue_clone.clone();
-                    let config = upload_config_clone.clone();
-
-                    // Add to queue synchronously (async work will be done by background processor)
-                    add_to_upload_queue_sync(
-                        file_path,
-                        base_path,
-                        &queue,
-                        &config,
-                        &app_handle_clone,
-                    );
+                    let _ = watcher_tx.send((file_path, folder_path_clone.clone()));
                 }
             }
         }
