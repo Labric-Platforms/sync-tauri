@@ -15,6 +15,7 @@ import {
   EyeOff,
   Folder,
   Loader2,
+  CloudCheck,
   ArrowUp,
   Search,
 } from "lucide-react";
@@ -35,10 +36,12 @@ import {
 // } from "@/components/ui/dropdown-menu";
 
 import { FileChangeEvent, FileUploadStatus } from "@/types";
+import { useUploadManager } from "@/hooks/useUploadManager";
 import UploadSettingsSheet from "./UploadSettingsDialog";
 import { getRecentDirs, pushRecent } from "@/lib/store";
 
 export default function Simple() {
+  const { progress } = useUploadManager();
   const [selectedFolder, setSelectedFolder] = useState("");
   const [fileChanges, setFileChanges] = useState<FileChangeEvent[]>([]);
   // Removed isOnline state as it's no longer needed with Rust backend
@@ -327,20 +330,24 @@ export default function Simple() {
         {/* File Changes */}
         {selectedFolder && (
           <>
-            <h3 className="text-lg font-semibold m-0 mt-8 mb-2">Logs</h3>
             <div
               ref={logsRef}
               className="sticky top-0 bg-background m-0 mb-2 space-y-3 py-2 z-40"
             >
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search logs..."
-                  autoFocus
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 rounded-full"
-                />
+                <div className="flex flex-col border dark:border-none rounded-full px-4 py-2 shadow-sm dark:bg-input/30">
+                  <div className="flex items-center gap-2">
+
+                    <Search className="text-muted-foreground h-4 w-4 flex-shrink-0 ml-1" />
+                    <Input
+                      placeholder="Search logs..."
+                      autoFocus
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full border-none shadow-none leading-snug focus-visible:ring-0 !text-base !bg-transparent h-auto py-0"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
             <div className="space-y-1 mb-8">
@@ -445,14 +452,14 @@ export default function Simple() {
           </Tooltip>
         </div>
         <div className="flex items-center space-x-4">
-          <span>
+          <span className="flex items-center gap-2">
             {(() => {
-              const actualChanges = fileChanges.filter(
-                (change) => change.event_type !== "initial"
-              ).length;
-              return actualChanges >= 500 ? "500+" : actualChanges;
-            })()}{" "}
-            changes detected
+              const pending = (progress?.total_queued ?? 0) + (progress?.in_flight ?? 0);
+              if (pending > 0) {
+                return <><Loader2 className="h-3 w-3 animate-spin" /><span>Syncing <span className="font-mono tabular-nums">{pending}</span> file{pending === 1 ? "" : "s"}</span></>;
+              }
+              return <><CloudCheck className="h-3 w-3" /><span>Up to date</span></>;
+            })()}
           </span>
           <UploadSettingsSheet>
             <button className="hover:bg-muted p-1 rounded">

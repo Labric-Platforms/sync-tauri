@@ -389,6 +389,7 @@ pub fn run() {
         total_queued: 0,
         total_uploaded: 0,
         total_failed: 0,
+        in_flight: 0,
         current_uploading: None,
     }));
     let http_client = create_shared_client();

@@ -83,6 +83,7 @@ pub struct UploadProgress {
     pub total_queued: usize,
     pub total_uploaded: usize,
     pub total_failed: usize,
+    pub in_flight: usize,
     pub current_uploading: Option<String>,
 }
 
@@ -591,10 +592,25 @@ pub async fn process_upload_queue(
             continue;
         }
 
-        emit_progress(&upload_progress, &upload_queue, &app_handle);
+        // Mark all drained items as in-flight immediately
+        let ready_count = ready_items.len();
+        {
+            let mut progress = upload_progress.lock();
+            progress.in_flight += ready_count;
+            progress.total_queued = upload_queue.lock().len();
+            let _ = app_handle.emit("upload_progress", &*progress);
+        }
 
         // Read files and prepare batch request
         let prepared = prepare_batch_items(ready_items.clone()).await;
+
+        // Items that failed to read in prepare_batch_items are lost from in_flight
+        let prepared_count = prepared.len();
+        if prepared_count < ready_count {
+            let mut progress = upload_progress.lock();
+            progress.in_flight -= ready_count - prepared_count;
+            let _ = app_handle.emit("upload_progress", &*progress);
+        }
 
         // Get presigned URLs for the batch
         let batch_results =
@@ -602,6 +618,11 @@ pub async fn process_upload_queue(
                 Ok(results) => results,
                 Err(e) => {
                     error!("Batch presigned request failed: {e}");
+                    {
+                        let mut progress = upload_progress.lock();
+                        progress.in_flight = progress.in_flight.saturating_sub(prepared_count);
+                        let _ = app_handle.emit("upload_progress", &*progress);
+                    }
                     {
                         let mut queue = upload_queue.lock();
                         for item in ready_items {
@@ -622,6 +643,11 @@ pub async fn process_upload_queue(
 
             let Some((prepared, _)) = prepared_upload else {
                 warn!("No matching prepared upload for: {}", result.file_name);
+                {
+                    let mut progress = upload_progress.lock();
+                    progress.in_flight = progress.in_flight.saturating_sub(1);
+                    let _ = app_handle.emit("upload_progress", &*progress);
+                }
                 continue;
             };
 
@@ -641,12 +667,18 @@ pub async fn process_upload_queue(
                 {
                     let mut progress = upload_progress.lock();
                     progress.total_uploaded += 1;
+                    progress.in_flight = progress.in_flight.saturating_sub(1);
                     let _ = app_handle.emit("upload_progress", &*progress);
                 }
                 continue;
             }
 
             if result.status != STATUS_NEEDS_UPLOAD {
+                {
+                    let mut progress = upload_progress.lock();
+                    progress.in_flight = progress.in_flight.saturating_sub(1);
+                    let _ = app_handle.emit("upload_progress", &*progress);
+                }
                 continue;
             }
 
@@ -657,14 +689,19 @@ pub async fn process_upload_queue(
                         "File '{}' needs upload but no URL provided, re-queuing",
                         prepared.item.relative_path
                     );
+                    {
+                        let mut progress = upload_progress.lock();
+                        progress.in_flight = progress.in_flight.saturating_sub(1);
+                    }
                     upload_queue
                         .lock()
                         .push_back(prepared.item.clone());
+                    emit_progress(&upload_progress, &upload_queue, &app_handle);
                     continue;
                 }
             };
 
-            // Spawn concurrent upload task
+            // Spawn concurrent upload task (item is already tracked as in-flight)
             let permit = semaphore.clone().acquire_owned().await.unwrap();
             let config_clone = config.clone();
             let client_clone = http_client.clone();
@@ -699,12 +736,17 @@ pub async fn process_upload_queue(
                         {
                             let mut progress = progress_clone.lock();
                             progress.total_uploaded += 1;
+                            progress.in_flight = progress.in_flight.saturating_sub(1);
                             progress.total_queued = queue_clone.lock().len();
                             let _ = app_clone.emit("upload_progress", &*progress);
                         }
                     }
                     Err(e) => {
                         item.retry_count += 1;
+                        {
+                            let mut progress = progress_clone.lock();
+                            progress.in_flight = progress.in_flight.saturating_sub(1);
+                        }
                         if item.retry_count < MAX_RETRY_COUNT {
                             warn!(
                                 "Upload failed for '{}' (attempt {}/{}), will retry: {}",
@@ -728,9 +770,12 @@ pub async fn process_upload_queue(
                             {
                                 let mut progress = progress_clone.lock();
                                 progress.total_failed += 1;
-                                progress.total_queued = queue_clone.lock().len();
-                                let _ = app_clone.emit("upload_progress", &*progress);
                             }
+                        }
+                        {
+                            let mut progress = progress_clone.lock();
+                            progress.total_queued = queue_clone.lock().len();
+                            let _ = app_clone.emit("upload_progress", &*progress);
                         }
                     }
                 }

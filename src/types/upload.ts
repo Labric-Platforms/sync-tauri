@@ -11,6 +11,7 @@ export interface UploadProgress {
   total_queued: number;
   total_uploaded: number;
   total_failed: number;
+  in_flight: number;
   current_uploading: string | null;
 }
 
