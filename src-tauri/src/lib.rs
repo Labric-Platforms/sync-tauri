@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use sysinfo::System;
+use sysinfo::{CpuRefreshKind, System};
 use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
 
@@ -238,16 +238,14 @@ fn get_device_fingerprint() -> Result<String, String> {
 
 #[tauri::command]
 fn get_device_info(app_handle: AppHandle) -> Result<DeviceInfo, String> {
-    let mut sys = System::new_all();
-    sys.refresh_all();
+    let mut sys = System::new();
+    sys.refresh_cpu_list(CpuRefreshKind::default());
+    sys.refresh_memory();
 
     let device_id = get_device_id(&app_handle)?;
     let device_fingerprint = get_device_fingerprint()?;
 
-    // Get hostname from environment variables
-    let hostname = std::env::var("HOSTNAME")
-        .or_else(|_| std::env::var("COMPUTERNAME"))
-        .unwrap_or_else(|_| "Unknown".to_string());
+    let hostname = System::host_name().unwrap_or_else(|| "Unknown".to_string());
 
     let platform = if cfg!(target_os = "windows") {
         "Windows"
@@ -269,35 +267,7 @@ fn get_device_info(app_handle: AppHandle) -> Result<DeviceInfo, String> {
         std::env::consts::ARCH
     };
 
-    // Get OS version using standard library
-    let release = if cfg!(target_os = "macos") {
-        std::process::Command::new("sw_vers")
-            .arg("-productVersion")
-            .output()
-            .ok()
-            .and_then(|output| String::from_utf8(output.stdout).ok())
-            .map(|s| s.trim().to_string())
-            .unwrap_or_else(|| "Unknown".to_string())
-    } else if cfg!(target_os = "windows") {
-        std::env::var("OS").unwrap_or_else(|_| "Windows".to_string())
-    } else {
-        // Linux - try to read from /etc/os-release
-        std::fs::read_to_string("/etc/os-release")
-            .ok()
-            .and_then(|content| {
-                content
-                    .lines()
-                    .find(|line| line.starts_with("PRETTY_NAME="))
-                    .map(|line| {
-                        line.split('=')
-                            .nth(1)
-                            .unwrap_or("Unknown")
-                            .trim_matches('"')
-                            .to_string()
-                    })
-            })
-            .unwrap_or_else(|| "Linux".to_string())
-    };
+    let release = System::os_version().unwrap_or_else(|| "Unknown".to_string());
 
     Ok(DeviceInfo {
         hostname,
