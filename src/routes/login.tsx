@@ -216,24 +216,23 @@ function Login() {
 
   return (
     <div className="flex flex-col items-center justify-center h-svh p-6 gap-6">
-      <div className="flex items-center justify-center gap-1.5">
+      <div className="flex items-center justify-center gap-2">
         <img src={logo} alt="Labric Sync" className="w-10 h-10" />
         <h1 className="text-2xl font-semibold">Labric Sync</h1>
       </div>
-      
+
       <div className="w-full max-w-sm flex flex-col items-center justify-center gap-4">
         <CodeDisplay code={enrollmentCode || undefined} isLoading={isLoading} />
+        <p className="text-md text-muted-foreground mb-6">
+          Enter this code at{" "}
+          <button
+            onClick={handleOpenEnrollPage}
+            className="text-info hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
+          >
+            labric.co/enroll
+          </button>
+        </p>
       </div>
-      
-      <h2 className="text-md text-muted-foreground mb-4">
-        Enter this code at{" "}
-        <button
-          onClick={handleOpenEnrollPage}
-          className="text-info hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
-        >
-          labric.co/enroll
-        </button>
-      </h2>
     </div>
   );
 }
