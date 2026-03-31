@@ -172,6 +172,8 @@ fn capture_initial_contents(
             let _ = app_handle.emit("file_change", &file_change);
 
             if path.is_dir() {
+                let relative_path = upload::get_relative_path(&path.to_string_lossy(), folder_path);
+                upload::emit_file_upload_status(&relative_path, upload::STATUS_DIRECTORY, None, app_handle);
                 dirs_to_visit.push(path);
             } else {
                 add_to_upload_queue_with_event_type(
