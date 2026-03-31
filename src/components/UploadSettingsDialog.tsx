@@ -149,7 +149,7 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
           </SheetDescription>
         </SheetHeader>
 
-        <div className="space-y-6 px-4">
+        <div className="space-y-6 px-4 pb-6">
           {/* Upload Control */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
