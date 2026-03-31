@@ -277,7 +277,7 @@ export default function Simple() {
             <Button onClick={selectFolder} className="flex-1">
               Change Folder
             </Button>
-            <Button onClick={stopWatching} variant="outline" className="flex-1">
+            <Button onClick={stopWatching} variant="destructive" className="flex-1">
               Stop
             </Button>
           </div>
