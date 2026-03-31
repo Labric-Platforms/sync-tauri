@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -40,6 +40,96 @@ import { useUploadManager } from "@/hooks/useUploadManager";
 import UploadSettingsSheet from "./UploadSettingsDialog";
 import { getRecentDirs, pushRecent } from "@/lib/store";
 
+const statusConfig = {
+  pending: {
+    icon: Clock,
+    tooltip: "Waiting for batched changes",
+    className: "text-muted-foreground",
+  },
+  queued: {
+    icon: ListEnd,
+    tooltip: "Queued for upload",
+    className: "text-muted-foreground",
+  },
+  uploading: {
+    icon: Loader2,
+    tooltip: "Currently uploading...",
+    className: "text-muted-foreground animate-spin",
+  },
+  uploaded: {
+    icon: CheckCircle,
+    tooltip: "Successfully uploaded",
+    className: "text-success",
+  },
+  failed: {
+    icon: XCircle,
+    tooltip: "Upload failed",
+    className: "text-destructive",
+  },
+  ignored: {
+    icon: EyeOff,
+    tooltip: "Ignored (matches ignore pattern)",
+    className: "text-muted-foreground",
+  },
+  directory: {
+    icon: Folder,
+    tooltip: "Directory",
+    className: "text-muted-foreground",
+  },
+} as const;
+
+function getRelativePathFromFolder(absolutePath: string, folder: string): string {
+  if (!folder || !absolutePath.startsWith(folder)) return absolutePath;
+  const relativePath = absolutePath.slice(folder.length);
+  return relativePath.startsWith("/") || relativePath.startsWith("\\")
+    ? relativePath.slice(1)
+    : relativePath;
+}
+
+function truncatePath(path: string, maxLength: number = 35): string {
+  if (path.length <= maxLength) return path;
+  return "..." + path.slice(-(maxLength - 3));
+}
+
+const FileChangeRow = memo(function FileChangeRow({
+  change,
+  status,
+  selectedFolder,
+}: {
+  change: FileChangeEvent;
+  status: FileUploadStatus["status"] | undefined;
+  selectedFolder: string;
+}) {
+  const relativePath = getRelativePathFromFolder(change.path, selectedFolder);
+  const StatusIcon = status ? statusConfig[status].icon : null;
+  const statusMeta = status ? statusConfig[status] : null;
+
+  return (
+    <div className="flex items-center py-2 w-full">
+      <div className="flex-1 min-w-0 pr-3">
+        <p className="text-sm truncate" title={relativePath}>
+          {truncatePath(relativePath)}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {StatusIcon && statusMeta && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <StatusIcon className={`h-4 w-4 ${statusMeta.className}`} />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{statusMeta.tooltip}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        <span className="text-xs text-muted-foreground whitespace-nowrap font-mono">
+          {new Date(change.timestamp * 1000).toLocaleTimeString()}
+        </span>
+      </div>
+    </div>
+  );
+});
+
 export default function Simple() {
   const { progress } = useUploadManager();
   const [selectedFolder, setSelectedFolder] = useState("");
@@ -80,10 +170,16 @@ export default function Simple() {
     const unlistenUploadStatus = listen("file_upload_status", (event) => {
       console.log("file_upload_status", event);
       const uploadStatus = event.payload as FileUploadStatus;
-      setUploadStatuses(
-        (prev) =>
-          new Map(prev.set(uploadStatus.relative_path, uploadStatus.status))
-      );
+      setUploadStatuses((prev) => {
+        const next = new Map(prev);
+        next.set(uploadStatus.relative_path, uploadStatus.status);
+        // Cap at 1000 entries to prevent unbounded memory growth
+        if (next.size > 1000) {
+          const firstKey = next.keys().next().value;
+          if (firstKey !== undefined) next.delete(firstKey);
+        }
+        return next;
+      });
     });
 
     return () => {
@@ -172,106 +268,31 @@ export default function Simple() {
     }
   }
 
-  function formatTimestamp(timestamp: number): string {
-    return new Date(timestamp * 1000).toLocaleTimeString();
-  }
-
   function getRelativePath(absolutePath: string): string {
-    if (!selectedFolder || !absolutePath.startsWith(selectedFolder)) {
-      return absolutePath;
-    }
-
-    const relativePath = absolutePath.slice(selectedFolder.length);
-    // Remove leading slash/backslash if present
-    return relativePath.startsWith("/") || relativePath.startsWith("\\")
-      ? relativePath.slice(1)
-      : relativePath;
-  }
-
-  function getDirectoryName(path: string): string {
-    return path;
-  }
-
-  function truncatePathFromStart(path: string, maxLength: number = 35): string {
-    if (path.length <= maxLength) {
-      return path;
-    }
-    return "..." + path.slice(-(maxLength - 3));
+    return getRelativePathFromFolder(absolutePath, selectedFolder);
   }
 
   function scrollToTop() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function getUploadStatus(
-    filePath: string
-  ): FileUploadStatus["status"] | undefined {
-    const relativePath = getRelativePath(filePath);
-    return uploadStatuses.get(relativePath);
-  }
-
-  function getUploadStatusIcon(status: FileUploadStatus["status"] | undefined) {
-    if (!status) return null;
-
-    const statusConfig = {
-      pending: {
-        icon: Clock,
-        tooltip: "Waiting for batched changes",
-        className: "text-muted-foreground",
-      },
-      queued: {
-        icon: ListEnd,
-        tooltip: "Queued for upload",
-        className: "text-muted-foreground",
-      },
-      uploading: {
-        icon: Loader2,
-        tooltip: "Currently uploading...",
-        className: "text-muted-foreground animate-spin",
-      },
-      uploaded: {
-        icon: CheckCircle,
-        tooltip: "Successfully uploaded",
-        className: "text-success",
-      },
-      failed: {
-        icon: XCircle,
-        tooltip: "Upload failed",
-        className: "text-destructive",
-      },
-      ignored: {
-        icon: EyeOff,
-        tooltip: "Ignored (matches ignore pattern)",
-        className: "text-muted-foreground",
-      },
-      directory: {
-        icon: Folder,
-        tooltip: "Directory",
-        className: "text-muted-foreground",
-      },
-    };
-
-    const config = statusConfig[status];
-    const IconComponent = config.icon;
-
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <IconComponent className={`h-4 w-4 ${config.className}`} />
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{config.tooltip}</p>
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
+  const getUploadStatus = useCallback(
+    (filePath: string): FileUploadStatus["status"] | undefined => {
+      const relativePath = getRelativePath(filePath);
+      return uploadStatuses.get(relativePath);
+    },
+    [uploadStatuses, selectedFolder]
+  );
 
   // Filter file changes based on search query
-  const filteredFileChanges = fileChanges.filter((change) => {
-    if (!searchQuery.trim()) return true;
-    const relativePath = getRelativePath(change.path);
-    return relativePath.toLowerCase().includes(searchQuery.toLowerCase());
-  });
+  const filteredFileChanges = useMemo(() => {
+    if (!searchQuery.trim()) return fileChanges;
+    const query = searchQuery.toLowerCase();
+    return fileChanges.filter((change) => {
+      const relativePath = getRelativePath(change.path);
+      return relativePath.toLowerCase().includes(query);
+    });
+  }, [fileChanges, searchQuery, selectedFolder]);
 
   return (
     <main className="container mx-auto p-6 max-w-4xl">
@@ -306,7 +327,7 @@ export default function Simple() {
                   className="text-xs text-muted-foreground hover:underline text-left"
                   title={dir}
                 >
-                  {getDirectoryName(dir)}
+                  {dir}
                 </button>
               ))}
             </div>
@@ -358,48 +379,13 @@ export default function Simple() {
                     : "No files match your search"}
                 </p>
               ) : (
-                filteredFileChanges.map((change, index) => (
-                  <div
-                    key={`${change.path}-${change.timestamp}-${index}`}
-                    className="flex items-center py-2 w-full"
-                  >
-                    <div className="flex-1 min-w-0 pr-3">
-                      <p
-                        className="text-sm truncate"
-                        title={getRelativePath(change.path)}
-                      >
-                        {truncatePathFromStart(getRelativePath(change.path))}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {getUploadStatusIcon(getUploadStatus(change.path))}
-                      <span className="text-xs text-muted-foreground whitespace-nowrap font-mono">
-                        {formatTimestamp(change.timestamp)}
-                      </span>
-                      {/* <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button className="h-6 w-6 rounded-sm hover:bg-muted flex items-center justify-center">
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48">
-                          <DropdownMenuItem>
-                            <Copy className="mr-2 h-4 w-4" />
-                            Copy Path
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <FolderOpen className="mr-2 h-4 w-4" />
-                            Open in Finder
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem>
-                            <RotateCcw className="mr-2 h-4 w-4" />
-                            Retry Upload
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu> */}
-                    </div>
-                  </div>
+                filteredFileChanges.map((change) => (
+                  <FileChangeRow
+                    key={change.path}
+                    change={change}
+                    status={getUploadStatus(change.path)}
+                    selectedFolder={selectedFolder}
+                  />
                 ))
               )}
             </div>
