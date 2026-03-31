@@ -13,6 +13,8 @@ use tauri_plugin_store::StoreExt;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
 
+use futures::stream::{self, StreamExt};
+
 use crate::http_client::{check_response, SharedHttpClient};
 use crate::{EVENT_TYPE_INITIAL, EVENT_TYPE_MODIFIED};
 
@@ -23,7 +25,6 @@ const MAX_RETRY_COUNT: u32 = 3;
 const RETRY_DELAY: Duration = Duration::from_secs(5);
 const DEFAULT_UPLOAD_DELAY_MS: u64 = 2000;
 const DEFAULT_MAX_CONCURRENT_UPLOADS: usize = 5;
-const UPLOAD_SPAWN_DELAY: Duration = Duration::from_millis(10);
 const BATCH_PROCESSING_DELAY: Duration = Duration::from_millis(100);
 const DISABLED_CHECK_INTERVAL: Duration = Duration::from_millis(1000);
 
@@ -318,53 +319,56 @@ pub fn add_to_upload_queue_with_event_type(
 
 // ── Batch presigned URL request ─────────────────────────────────────────
 
+const MAX_CONCURRENT_FILE_READS: usize = 64;
+
 async fn prepare_batch_items(items: Vec<UploadItem>) -> Vec<(PreparedUpload, FileCheckItem)> {
-    let mut prepared = Vec::with_capacity(items.len());
+    stream::iter(items)
+        .map(|item| async move {
+            let file_content: Bytes = match tokio::fs::read(&item.path).await {
+                Ok(content) => content.into(),
+                Err(e) => {
+                    warn!(
+                        "Failed to read file '{}' for batch request: {}",
+                        item.relative_path, e
+                    );
+                    return None;
+                }
+            };
 
-    for item in items {
-        let file_content: Bytes = match tokio::fs::read(&item.path).await {
-            Ok(content) => content.into(),
-            Err(e) => {
-                warn!(
-                    "Failed to read file '{}' for batch request: {}",
-                    item.relative_path, e
-                );
-                continue;
-            }
-        };
+            let content_type = get_content_type(&item.path);
+            let crc32c_hash = compute_crc32c_hash(&file_content);
 
-        let content_type = get_content_type(&item.path);
-        let crc32c_hash = compute_crc32c_hash(&file_content);
+            let (file_created_at, file_modified_at) = match tokio::fs::metadata(&item.path).await {
+                Ok(metadata) => (
+                    metadata.created().ok().and_then(system_time_to_iso8601),
+                    metadata.modified().ok().and_then(system_time_to_iso8601),
+                ),
+                Err(e) => {
+                    warn!("Failed to get file timestamps for '{}': {}", item.path, e);
+                    (None, None)
+                }
+            };
 
-        let (file_created_at, file_modified_at) = match tokio::fs::metadata(&item.path).await {
-            Ok(metadata) => (
-                metadata.created().ok().and_then(system_time_to_iso8601),
-                metadata.modified().ok().and_then(system_time_to_iso8601),
-            ),
-            Err(e) => {
-                warn!("Failed to get file timestamps for '{}': {}", item.path, e);
-                (None, None)
-            }
-        };
+            let check_item = FileCheckItem {
+                file_name: item.relative_path.clone(),
+                content_type: content_type.clone(),
+                crc32c: Some(crc32c_hash),
+                file_created_at,
+                file_modified_at,
+            };
 
-        let check_item = FileCheckItem {
-            file_name: item.relative_path.clone(),
-            content_type: content_type.clone(),
-            crc32c: Some(crc32c_hash),
-            file_created_at,
-            file_modified_at,
-        };
+            let upload = PreparedUpload {
+                item,
+                file_content,
+                content_type,
+            };
 
-        let upload = PreparedUpload {
-            item,
-            file_content,
-            content_type,
-        };
-
-        prepared.push((upload, check_item));
-    }
-
-    prepared
+            Some((upload, check_item))
+        })
+        .buffer_unordered(MAX_CONCURRENT_FILE_READS)
+        .filter_map(|x| async { x })
+        .collect()
+        .await
 }
 
 async fn get_presigned_urls_batch(
@@ -432,17 +436,16 @@ async fn get_presigned_urls_batch(
 
 // ── Single file upload ──────────────────────────────────────────────────
 
-#[allow(clippy::too_many_arguments)]
-async fn upload_file(
+/// PUT the file content to the presigned URL. This is the only part that
+/// should be held under the concurrency semaphore.
+async fn upload_file_put(
     item: &UploadItem,
     file_content: Bytes,
     content_type: &str,
     upload_url: &str,
-    file_id: &str,
-    config: &UploadConfig,
     client: &SharedHttpClient,
     app_handle: &AppHandle,
-) -> Result<String, String> {
+) -> Result<(), String> {
     info!(
         "Starting upload for file: {} (attempt: {})",
         item.relative_path,
@@ -477,18 +480,7 @@ async fn upload_file(
         item.relative_path, file_size
     );
 
-    // Update file metadata (non-fatal if it fails)
-    if let Err(e) = update_file_metadata(file_id, config, client, app_handle).await {
-        warn!(
-            "Failed to update metadata for file '{}' (file_id: {}): {}",
-            item.relative_path, file_id, e
-        );
-    }
-
-    let _ = app_handle.emit("file_uploaded", &item.relative_path);
-    emit_file_upload_status(&item.relative_path, STATUS_UPLOADED, None, app_handle);
-
-    Ok(file_id.to_string())
+    Ok(())
 }
 
 async fn update_file_metadata(
@@ -714,25 +706,49 @@ pub async fn process_upload_queue(
             let content_type = prepared.content_type.clone();
 
             tauri::async_runtime::spawn(async move {
-                let result = upload_file(
+                // Upload the file (PUT to presigned URL only)
+                let upload_result = upload_file_put(
                     &item,
                     file_content,
                     &content_type,
                     &upload_url,
-                    &file_id,
-                    &config_clone,
                     &client_clone,
                     &app_clone,
                 )
                 .await;
 
-                match result {
-                    Ok(file_id) => {
+                // Release the permit immediately after PUT so the next upload can start
+                drop(permit);
+
+                match upload_result {
+                    Ok(()) => {
+                        // Metadata update runs outside the semaphore — doesn't block other uploads
+                        if let Err(e) = update_file_metadata(
+                            &file_id,
+                            &config_clone,
+                            &client_clone,
+                            &app_clone,
+                        )
+                        .await
+                        {
+                            warn!(
+                                "Failed to update metadata for '{}' (file_id: {}): {}",
+                                item.relative_path, file_id, e
+                            );
+                        }
+
                         debug!(
                             "Upload completed for: {} (file_id: {})",
                             item.relative_path, file_id
                         );
+                        let _ = app_clone.emit("file_uploaded", &item.relative_path);
                         let _ = app_clone.emit("upload_success", &item.relative_path);
+                        emit_file_upload_status(
+                            &item.relative_path,
+                            STATUS_UPLOADED,
+                            None,
+                            &app_clone,
+                        );
                         {
                             let mut progress = progress_clone.lock();
                             progress.total_uploaded += 1;
@@ -779,11 +795,7 @@ pub async fn process_upload_queue(
                         }
                     }
                 }
-
-                drop(permit);
             });
-
-            sleep(UPLOAD_SPAWN_DELAY).await;
         }
 
         sleep(BATCH_PROCESSING_DELAY).await;
