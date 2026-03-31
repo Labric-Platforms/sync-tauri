@@ -176,21 +176,24 @@ fn get_content_type(file_path: &str) -> String {
 }
 
 pub fn get_relative_path(absolute_path: &str, base_path: &str) -> String {
+    // Try cheap string-based approach first (no filesystem I/O)
+    if absolute_path.starts_with(base_path) {
+        let relative = absolute_path
+            .trim_start_matches(base_path)
+            .trim_start_matches('/')
+            .trim_start_matches('\\');
+        if !relative.is_empty() {
+            return relative.to_string();
+        }
+    }
+
+    // Fall back to canonicalize only when string approach fails (e.g. symlinks)
     if let Ok(abs) = std::path::Path::new(absolute_path).canonicalize() {
         if let Ok(base) = std::path::Path::new(base_path).canonicalize() {
             if let Ok(relative) = abs.strip_prefix(&base) {
                 return relative.to_string_lossy().to_string();
             }
         }
-    }
-
-    // Fallback to simple string manipulation
-    if absolute_path.starts_with(base_path) {
-        return absolute_path
-            .trim_start_matches(base_path)
-            .trim_start_matches('/')
-            .trim_start_matches('\\')
-            .to_string();
     }
 
     absolute_path.to_string()
