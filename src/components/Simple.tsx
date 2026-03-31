@@ -35,6 +35,7 @@ import {
 //   DropdownMenuTrigger,
 // } from "@/components/ui/dropdown-menu";
 
+import { toast } from "sonner";
 import { FileChangeEvent, FileUploadStatus } from "@/types";
 import { useUploadManager } from "@/hooks/useUploadManager";
 import UploadSettingsSheet from "./UploadSettingsDialog";
@@ -299,15 +300,15 @@ export default function Simple() {
       <div className="space-y-8 mt-6 max-w-lg mx-auto">
         {/* Folder Selection */}
         {!selectedFolder ? (
-          <Button onClick={selectFolder} className="w-full">
+          <Button onClick={selectFolder} size="lg" className="w-full rounded-full">
             Select Folder
           </Button>
         ) : (
           <div className="flex gap-2">
-            <Button onClick={selectFolder} className="flex-1">
+            <Button onClick={selectFolder} size="lg" className="flex-1 rounded-full">
               Change Folder
             </Button>
-            <Button onClick={stopWatching} variant="destructive" className="flex-1">
+            <Button onClick={stopWatching} variant="destructive" size="lg" className="flex-1 rounded-full">
               Stop
             </Button>
           </div>
@@ -341,9 +342,16 @@ export default function Simple() {
                 Currently watching
               </p>
 
-              <p className="text-sm font-semibold break-all">
+              <span
+                className="text-sm break-all cursor-copy inline"
+                onClick={() => {
+                  navigator.clipboard.writeText(selectedFolder);
+                  toast.success("Copied to clipboard");
+                }}
+                title="Click to copy path"
+              >
                 {selectedFolder}
-              </p>
+              </span>
             </div>
           </div>
         )}
