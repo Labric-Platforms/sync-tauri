@@ -365,7 +365,7 @@ export default function Simple() {
                       autoFocus
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full border-none shadow-none leading-snug focus-visible:ring-0 !text-base !bg-transparent h-auto py-0"
+                      className="w-full border-none shadow-none leading-snug focus-visible:ring-0 !bg-transparent h-auto py-0"
                     />
                   </div>
                 </div>
