@@ -73,8 +73,10 @@ Generates TypeScript types from the backend OpenAPI spec at `http://localhost:80
 src/                        # React frontend
   routes/                   # File-based routing (TanStack Router)
     __root.tsx              # Root layout, theme, auth check
-    login.tsx               # Enrollment/auth flow
+    index.tsx               # Redirects to dashboard
+    login.tsx               # Device enrollment flow
     _protected/
+      route.tsx             # Auth guard layout
       dashboard.tsx         # Main file watcher dashboard
   components/               # UI components (shadcn/ui + custom)
   hooks/                    # useUploadManager, useHeartbeat, useAppUpdater
@@ -92,9 +94,9 @@ src-tauri/                  # Rust backend
 
 ## Authentication Flow
 
-1. App generates a device fingerprint and requests an enrollment code
-2. User scans QR code or visits `labric.co/enroll` to link the device
-3. App polls for enrollment completion, receives a JWT token
+1. App generates a device fingerprint and requests a 6-digit enrollment code from the server
+2. The code is displayed on the login screen -- user visits `labric.co/enroll` and enters it to link the device
+3. App polls `/api/sync/poll_enrollment` until the code is confirmed, then receives a JWT token
 4. Token is persisted in Tauri Store for subsequent sessions
 
 ## CI/CD
