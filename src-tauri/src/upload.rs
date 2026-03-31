@@ -524,26 +524,17 @@ async fn update_file_metadata(
 // ── Background queue processor ──────────────────────────────────────────
 
 /// Drain up to MAX_BATCH_SIZE items that have aged past the upload delay.
+/// Items are ordered by timestamp (oldest at front), so we drain from the front.
 fn collect_ready_items(queue: &mut VecDeque<UploadItem>, delay_ms: u64) -> Vec<UploadItem> {
     let now_ms = now_millis();
 
-    let mut ready = Vec::new();
-    let mut indices_to_remove = Vec::new();
+    let count = queue
+        .iter()
+        .take(MAX_BATCH_SIZE)
+        .take_while(|item| now_ms.saturating_sub(item.timestamp) >= delay_ms)
+        .count();
 
-    for (index, item) in queue.iter().enumerate() {
-        let item_age_ms = now_ms.saturating_sub(item.timestamp);
-        if item_age_ms >= delay_ms {
-            ready.push(item.clone());
-            indices_to_remove.push(index);
-            if ready.len() >= MAX_BATCH_SIZE {
-                break;
-            }
-        }
-    }
-
-    for index in indices_to_remove.iter().rev() {
-        queue.remove(*index);
-    }
+    let ready: Vec<UploadItem> = queue.drain(..count).collect();
 
     if !ready.is_empty() || !queue.is_empty() {
         debug!(
