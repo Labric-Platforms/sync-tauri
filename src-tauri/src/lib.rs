@@ -9,7 +9,7 @@ use std::sync::Arc;
 use sysinfo::{CpuRefreshKind, System};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use uuid::Uuid;
 
 // File system constants
@@ -27,6 +27,12 @@ const BYTES_TO_GB_DIVISOR: u64 = 1024 * 1024 * 1024;
 
 mod http_client;
 use http_client::{create_shared_client, SharedHttpClient};
+
+fn show_main_window(window: &WebviewWindow) {
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+}
 
 mod upload;
 use upload::{
@@ -473,14 +479,12 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(app.default_window_icon().expect("default window icon must be set in tauri.conf.json").clone())
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.unminimize();
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                            show_main_window(&window);
                         }
                     }
                     "quit" => {
@@ -497,9 +501,7 @@ pub fn run() {
                     {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.unminimize();
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                            show_main_window(&window);
                         }
                     }
                 })
@@ -516,16 +518,14 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|app_handle, event| match &event {
+    app.run(|_app_handle, event| match &event {
         tauri::RunEvent::ExitRequested { api, .. } => {
             api.prevent_exit();
         }
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen { .. } => {
-            if let Some(window) = app_handle.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
+            if let Some(window) = _app_handle.get_webview_window("main") {
+                show_main_window(&window);
             }
         }
         _ => {}
