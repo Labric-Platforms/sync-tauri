@@ -478,8 +478,9 @@ pub fn run() {
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
-            let _tray = TrayIconBuilder::new()
+            let tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().expect("default window icon must be set in tauri.conf.json").clone())
+                .tooltip("Labric Sync")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
@@ -506,6 +507,8 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            let _ = tray.set_tooltip(Some("Labric Sync"));
 
             Ok(())
         })
