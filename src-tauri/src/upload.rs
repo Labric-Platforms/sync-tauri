@@ -1,3 +1,6 @@
+use base64::{engine::general_purpose, Engine as _};
+use chrono::{DateTime, Utc};
+use crc32c::crc32c;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -7,20 +10,20 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
-use crc32c::crc32c;
-use base64::{engine::general_purpose, Engine as _};
-use chrono::{DateTime, Utc};
+
+use crate::http_client::{check_response, SharedHttpClient};
+use crate::{EVENT_TYPE_INITIAL, EVENT_TYPE_MODIFIED};
 
 // Upload processing constants
 const MAX_BATCH_SIZE: usize = 1000;
-const QUEUE_PROCESSING_INTERVAL_MS: u64 = 200;
+const QUEUE_POLL_INTERVAL: Duration = Duration::from_millis(200);
 const MAX_RETRY_COUNT: u32 = 3;
-const RETRY_DELAY_SECS: u64 = 5;
+const RETRY_DELAY: Duration = Duration::from_secs(5);
 const DEFAULT_UPLOAD_DELAY_MS: u64 = 2000;
 const DEFAULT_MAX_CONCURRENT_UPLOADS: usize = 5;
-const UPLOAD_SPAWN_DELAY_MS: u64 = 10;
-const BATCH_PROCESSING_DELAY_MS: u64 = 100;
-const DISABLED_CHECK_INTERVAL_MS: u64 = 1000;
+const UPLOAD_SPAWN_DELAY: Duration = Duration::from_millis(10);
+const BATCH_PROCESSING_DELAY: Duration = Duration::from_millis(100);
+const DISABLED_CHECK_INTERVAL: Duration = Duration::from_millis(1000);
 
 // File status constants
 const STATUS_EXISTS: &str = "exists";
@@ -31,21 +34,19 @@ const STATUS_UPLOADING: &str = "uploading";
 const STATUS_UPLOADED: &str = "uploaded";
 const STATUS_FAILED: &str = "failed";
 
-// Event type constants
-const EVENT_TYPE_INITIAL: &str = "initial";
-const EVENT_TYPE_MODIFIED: &str = "modified";
-
 // Store filename constant
 const SETTINGS_STORE_FILENAME: &str = "settings.json";
+
+// ── Data types ──────────────────────────────────────────────────────────
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UploadConfig {
     pub enabled: bool,
     pub server_url: String,
     pub ignored_patterns: Vec<String>,
-    pub upload_delay_ms: u64, // Delay before uploading to batch changes
-    pub max_concurrent_uploads: usize, // Maximum number of concurrent uploads
-    pub ignore_existing_files: bool, // Whether to ignore existing files when a folder is selected
+    pub upload_delay_ms: u64,
+    pub max_concurrent_uploads: usize,
+    pub ignore_existing_files: bool,
 }
 
 impl Default for UploadConfig {
@@ -61,7 +62,7 @@ impl Default for UploadConfig {
             ],
             upload_delay_ms: DEFAULT_UPLOAD_DELAY_MS,
             max_concurrent_uploads: DEFAULT_MAX_CONCURRENT_UPLOADS,
-            ignore_existing_files: false, // By default, existing files should be uploaded
+            ignore_existing_files: false,
         }
     }
 }
@@ -74,7 +75,27 @@ pub struct UploadItem {
     pub retry_count: u32,
 }
 
-// Batch request/response structs for /api/sync/get_presigned_batch
+#[derive(Clone, Serialize, Deserialize)]
+pub struct UploadProgress {
+    pub total_queued: usize,
+    pub total_uploaded: usize,
+    pub total_failed: usize,
+    pub current_uploading: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct FileUploadStatus {
+    pub relative_path: String,
+    pub status: String,
+    pub error: Option<String>,
+}
+
+pub type UploadQueue = Arc<Mutex<VecDeque<UploadItem>>>;
+pub type UploadConfigState = Arc<Mutex<UploadConfig>>;
+pub type UploadProgressState = Arc<Mutex<UploadProgress>>;
+
+// ── API request/response types ──────────────────────────────────────────
+
 #[derive(Serialize, Deserialize)]
 struct FileCheckItem {
     #[serde(rename = "fileName")]
@@ -98,7 +119,7 @@ struct GetPresignedBatchBody {
 struct FileCheckResult {
     file_name: String,
     crc32c: Option<String>,
-    status: String, // "exists" or "needs_upload"
+    status: String,
     file_id: String,
     upload_url: Option<String>,
 }
@@ -110,27 +131,16 @@ struct GetPresignedBatchResponse {
     files: Vec<FileCheckResult>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct UploadProgress {
-    pub total_queued: usize,
-    pub total_uploaded: usize,
-    pub total_failed: usize,
-    pub current_uploading: Option<String>,
+/// An upload item paired with its already-read file content, to avoid reading twice.
+struct PreparedUpload {
+    item: UploadItem,
+    file_content: Vec<u8>,
+    content_type: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct FileUploadStatus {
-    pub relative_path: String,
-    pub status: String, // "pending" | "queued" | "uploading" | "uploaded" | "failed"
-    pub error: Option<String>,
-}
+// ── Small helpers ───────────────────────────────────────────────────────
 
-pub type UploadQueue = Arc<Mutex<VecDeque<UploadItem>>>;
-pub type UploadConfigState = Arc<Mutex<UploadConfig>>;
-pub type UploadProgressState = Arc<Mutex<UploadProgress>>;
-
-// Helper function to emit file upload status events
-pub fn emit_file_upload_status(
+fn emit_file_upload_status(
     relative_path: &str,
     status: &str,
     error: Option<String>,
@@ -141,32 +151,25 @@ pub fn emit_file_upload_status(
         status: status.to_string(),
         error,
     };
-    
     if let Err(e) = app_handle.emit("file_upload_status", &upload_status) {
-        warn!("Failed to emit file upload status event: {}", e);
+        warn!("Failed to emit file upload status event: {e}");
     }
 }
 
-// Helper function to check if a file should be ignored
 pub fn should_ignore_file(file_path: &str, ignored_patterns: &[String]) -> bool {
-    for pattern in ignored_patterns {
-        if let Ok(glob_pattern) = glob::Pattern::new(pattern) {
-            if glob_pattern.matches(file_path) {
-                return true;
-            }
-        }
-    }
-    false
+    ignored_patterns.iter().any(|pattern| {
+        glob::Pattern::new(pattern)
+            .map(|p| p.matches(file_path))
+            .unwrap_or(false)
+    })
 }
 
-// Helper function to get content type from file path
 fn get_content_type(file_path: &str) -> String {
     mime_guess::from_path(file_path)
         .first_or_octet_stream()
         .to_string()
 }
 
-// Helper function to get relative path
 pub fn get_relative_path(absolute_path: &str, base_path: &str) -> String {
     if let Ok(abs) = std::path::Path::new(absolute_path).canonicalize() {
         if let Ok(base) = std::path::Path::new(base_path).canonicalize() {
@@ -178,8 +181,8 @@ pub fn get_relative_path(absolute_path: &str, base_path: &str) -> String {
 
     // Fallback to simple string manipulation
     if absolute_path.starts_with(base_path) {
-        let relative = absolute_path.trim_start_matches(base_path);
-        return relative
+        return absolute_path
+            .trim_start_matches(base_path)
             .trim_start_matches('/')
             .trim_start_matches('\\')
             .to_string();
@@ -188,160 +191,36 @@ pub fn get_relative_path(absolute_path: &str, base_path: &str) -> String {
     absolute_path.to_string()
 }
 
-// Helper function to compute CRC32C hash of file content
-// Returns base64-encoded big-endian bytes to match Google Cloud Storage format
 fn compute_crc32c_hash(data: &[u8]) -> String {
     let hash = crc32c(data);
-    let hash_bytes = hash.to_be_bytes(); // Convert to big-endian byte order
-    general_purpose::STANDARD.encode(&hash_bytes) // Base64 encode
+    general_purpose::STANDARD.encode(hash.to_be_bytes())
 }
 
-// Helper function to convert SystemTime to ISO 8601 string format
 fn system_time_to_iso8601(time: SystemTime) -> Option<String> {
-    match time.duration_since(UNIX_EPOCH) {
-        Ok(duration) => {
-            let datetime: DateTime<Utc> = DateTime::from_timestamp(
-                duration.as_secs() as i64,
-                duration.subsec_nanos(),
-            )?;
-            Some(datetime.to_rfc3339())
-        }
-        Err(_) => None,
-    }
+    let duration = time.duration_since(UNIX_EPOCH).ok()?;
+    let datetime: DateTime<Utc> =
+        DateTime::from_timestamp(duration.as_secs() as i64, duration.subsec_nanos())?;
+    Some(datetime.to_rfc3339())
 }
 
-// Helper function to get file timestamps (created and modified)
-async fn get_file_timestamps(path: &str) -> (Option<String>, Option<String>) {
-    match tokio::fs::metadata(path).await {
-        Ok(metadata) => {
-            let created_at = metadata.created().ok().and_then(system_time_to_iso8601);
-            let modified_at = metadata.modified().ok().and_then(system_time_to_iso8601);
-            (created_at, modified_at)
-        }
-        Err(e) => {
-            warn!("Failed to get file timestamps for '{}': {}", path, e);
-            (None, None)
-        }
-    }
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
 }
 
-// Batch function to get presigned URLs for multiple files
-async fn get_presigned_urls_batch(
-    items: Vec<UploadItem>,
-    config: &UploadConfig,
-    app_handle: &AppHandle,
-) -> Result<Vec<(UploadItem, FileCheckResult)>, String> {
-    if items.is_empty() {
-        return Ok(vec![]);
-    }
-
-    info!("Requesting presigned URLs for {} files in batch", items.len());
-
-    // Prepare batch request - read files and compute CRC32C
-    let mut file_check_items = Vec::new();
-    let mut valid_items = Vec::new();
-
-    for item in items {
-        // Read file content to compute CRC32C
-        match tokio::fs::read(&item.path).await {
-            Ok(file_content) => {
-                let content_type = get_content_type(&item.path);
-                let crc32c_hash = compute_crc32c_hash(&file_content);
-                
-                // Get file created/modified timestamps
-                let (file_created_at, file_modified_at) = get_file_timestamps(&item.path).await;
-
-                file_check_items.push(FileCheckItem {
-                    file_name: item.relative_path.clone(),
-                    content_type,
-                    crc32c: Some(crc32c_hash),
-                    file_created_at,
-                    file_modified_at,
-                });
-                valid_items.push(item);
-            }
-            Err(e) => {
-                warn!("Failed to read file '{}' for batch request: {}", item.relative_path, e);
-                // Skip this file, continue with others
-            }
-        }
-    }
-
-    if file_check_items.is_empty() {
-        return Ok(vec![]);
-    }
-
-    // Get token from store
-    let token = {
-        let store = app_handle.store(SETTINGS_STORE_FILENAME)
-            .map_err(|e| format!("Failed to access store: {}", e))?;
-        store.get("token").unwrap_or_default()
-    };
-
-    // Make batch request
-    let client = reqwest::Client::new();
-    let batch_url = format!("{}/api/sync/get_presigned_batch", config.server_url);
-    let batch_body = GetPresignedBatchBody {
-        files: file_check_items,
-    };
-
-    debug!("Sending batch request to: {} with {} files", batch_url, batch_body.files.len());
-
-    let mut request_builder = client
-        .post(&batch_url)
-        .json(&batch_body);
-
-    // Add Authorization header if token exists
-    if let Some(token_str) = token.as_str() {
-        request_builder = request_builder.header("Authorization", format!("Bearer {}", token_str));
-    }
-
-    let response = request_builder
-        .send()
-        .await
-        .map_err(|e| {
-            let error_msg = format!("Failed to send batch presigned request: {}", e);
-            error!("{}", error_msg);
-            error_msg
-        })?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let response_text = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unable to read response".to_string());
-        let error_msg = format!(
-            "Batch presigned request failed with status {}: {}",
-            status, response_text
-        );
-        error!("{}", error_msg);
-        return Err(error_msg);
-    }
-
-    let batch_response: GetPresignedBatchResponse = response.json().await.map_err(|e| {
-        let error_msg = format!("Failed to parse batch presigned response: {}", e);
-        error!("{}", error_msg);
-        error_msg
-    })?;
-
-    info!(
-        "Batch request successful: {} files processed",
-        batch_response.files.len()
-    );
-
-    // Match results back to upload items
-    let mut results = Vec::new();
-    for result in batch_response.files {
-        if let Some(item) = valid_items.iter().find(|i| i.relative_path == result.file_name) {
-            results.push((item.clone(), result));
-        }
-    }
-
-    Ok(results)
+fn get_auth_token(app_handle: &AppHandle) -> Result<Option<String>, String> {
+    let store = app_handle
+        .store(SETTINGS_STORE_FILENAME)
+        .map_err(|e| format!("Failed to access store: {e}"))?;
+    Ok(store
+        .get("token")
+        .and_then(|v| v.as_str().map(String::from)))
 }
 
-// Synchronous function to add file to upload queue (for file watcher callback)
+// ── Queue management ────────────────────────────────────────────────────
+
 pub fn add_to_upload_queue_sync(
     file_path: String,
     base_path: String,
@@ -349,10 +228,16 @@ pub fn add_to_upload_queue_sync(
     upload_config: &UploadConfigState,
     app_handle: &AppHandle,
 ) {
-    add_to_upload_queue_with_event_type(file_path, base_path, upload_queue, upload_config, EVENT_TYPE_MODIFIED, app_handle);
+    add_to_upload_queue_with_event_type(
+        file_path,
+        base_path,
+        upload_queue,
+        upload_config,
+        EVENT_TYPE_MODIFIED,
+        app_handle,
+    );
 }
 
-// Enhanced function that accepts event type for more granular control
 pub fn add_to_upload_queue_with_event_type(
     file_path: String,
     base_path: String,
@@ -362,264 +247,328 @@ pub fn add_to_upload_queue_with_event_type(
     app_handle: &AppHandle,
 ) {
     let config = upload_config.lock().unwrap().clone();
-
-    if !config.enabled {
-        debug!("Upload is disabled, skipping file: {}", file_path);
-        
-        let relative_path = get_relative_path(&file_path, &base_path);
-        // Emit ignored status for this file since uploads are disabled
-        emit_file_upload_status(&relative_path, STATUS_IGNORED, None, app_handle);
-        return;
-    }
-
-    // Skip initial files if ignore_existing_files is enabled
-    if config.ignore_existing_files && event_type == EVENT_TYPE_INITIAL {
-        debug!("Ignoring existing file due to ignore_existing_files setting: {}", file_path);
-
-        let relative_path = get_relative_path(&file_path, &base_path);
-        // Emit ignored status for this file
-        emit_file_upload_status(&relative_path, STATUS_IGNORED, None, app_handle);
-        return;
-    }
-
     let relative_path = get_relative_path(&file_path, &base_path);
 
-    // Check if file should be ignored
-    if should_ignore_file(&relative_path, &config.ignored_patterns) {
-        debug!(
-            "File '{}' matches ignore pattern, skipping upload",
-            relative_path
-        );
-
-        // Emit ignored status for this file
+    if !config.enabled {
+        debug!("Upload is disabled, skipping file: {file_path}");
         emit_file_upload_status(&relative_path, STATUS_IGNORED, None, app_handle);
         return;
     }
 
-    // Check if file exists and is not a directory
+    if config.ignore_existing_files && event_type == EVENT_TYPE_INITIAL {
+        debug!("Ignoring existing file due to ignore_existing_files setting: {file_path}");
+        emit_file_upload_status(&relative_path, STATUS_IGNORED, None, app_handle);
+        return;
+    }
+
+    if should_ignore_file(&relative_path, &config.ignored_patterns) {
+        debug!("File '{relative_path}' matches ignore pattern, skipping upload");
+        emit_file_upload_status(&relative_path, STATUS_IGNORED, None, app_handle);
+        return;
+    }
+
+    // Only queue actual files, not directories
     match std::fs::metadata(&file_path) {
-        Ok(metadata) => {
-            if metadata.is_file() {
-                let upload_item = UploadItem {
-                    path: file_path.clone(),
-                    relative_path: relative_path.clone(),
-                    timestamp: SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                    retry_count: 0,
-                };
+        Ok(metadata) if metadata.is_file() => {
+            let upload_item = UploadItem {
+                path: file_path.clone(),
+                relative_path: relative_path.clone(),
+                timestamp: now_secs(),
+                retry_count: 0,
+            };
 
-                let mut queue = upload_queue.lock().unwrap();
-                let queue_len_before = queue.len();
+            let mut queue = upload_queue.lock().unwrap();
+            let had_duplicate = queue.iter().any(|item| item.path == file_path);
+            queue.retain(|item| item.path != file_path);
+            queue.push_back(upload_item);
 
-                // Remove existing item with same path to avoid duplicates
-                queue.retain(|item| item.path != upload_item.path);
-                let was_duplicate = queue.len() < queue_len_before;
-
-                queue.push_back(upload_item);
-
-                if was_duplicate {
-                    debug!(
-                        "Updated existing queue item for file: {} (queue size: {})",
-                        relative_path,
-                        queue.len()
-                    );
-                } else {
-                    info!(
-                        "Added file to upload queue: {} (queue size: {})",
-                        relative_path,
-                        queue.len()
-                    );
-                }
-
-                // Emit queued status for this file
-                emit_file_upload_status(&relative_path, STATUS_QUEUED, None, app_handle);
+            if had_duplicate {
+                debug!(
+                    "Updated existing queue item for file: {} (queue size: {})",
+                    relative_path,
+                    queue.len()
+                );
             } else {
-                debug!("Path '{}' is not a file, skipping upload", relative_path);
-                // Emit ignored status for non-files (directories, etc.)
-                emit_file_upload_status(&relative_path, STATUS_IGNORED, None, app_handle);
+                info!(
+                    "Added file to upload queue: {} (queue size: {})",
+                    relative_path,
+                    queue.len()
+                );
             }
+
+            emit_file_upload_status(&relative_path, STATUS_QUEUED, None, app_handle);
+        }
+        Ok(_) => {
+            debug!("Path '{relative_path}' is not a file, skipping upload");
+            emit_file_upload_status(&relative_path, STATUS_IGNORED, None, app_handle);
         }
         Err(e) => {
-            warn!("Failed to get metadata for file '{}': {}", relative_path, e);
+            warn!("Failed to get metadata for file '{relative_path}': {e}");
         }
     }
 }
 
-// Async function to add file to upload queue (for manual triggers)
-pub async fn add_to_upload_queue_async(
-    file_path: String,
-    base_path: String,
-    upload_queue: &UploadQueue,
-    upload_config: &UploadConfigState,
-    app_handle: &AppHandle,
-) {
-    add_to_upload_queue_sync(file_path, base_path, upload_queue, upload_config, app_handle);
+// ── Batch presigned URL request ─────────────────────────────────────────
+
+async fn prepare_batch_items(items: Vec<UploadItem>) -> Vec<(PreparedUpload, FileCheckItem)> {
+    let mut prepared = Vec::with_capacity(items.len());
+
+    for item in items {
+        let file_content = match tokio::fs::read(&item.path).await {
+            Ok(content) => content,
+            Err(e) => {
+                warn!(
+                    "Failed to read file '{}' for batch request: {}",
+                    item.relative_path, e
+                );
+                continue;
+            }
+        };
+
+        let content_type = get_content_type(&item.path);
+        let crc32c_hash = compute_crc32c_hash(&file_content);
+
+        let (file_created_at, file_modified_at) = match tokio::fs::metadata(&item.path).await {
+            Ok(metadata) => (
+                metadata.created().ok().and_then(system_time_to_iso8601),
+                metadata.modified().ok().and_then(system_time_to_iso8601),
+            ),
+            Err(e) => {
+                warn!("Failed to get file timestamps for '{}': {}", item.path, e);
+                (None, None)
+            }
+        };
+
+        let check_item = FileCheckItem {
+            file_name: item.relative_path.clone(),
+            content_type: content_type.clone(),
+            crc32c: Some(crc32c_hash),
+            file_created_at,
+            file_modified_at,
+        };
+
+        let upload = PreparedUpload {
+            item,
+            file_content,
+            content_type,
+        };
+
+        prepared.push((upload, check_item));
+    }
+
+    prepared
 }
 
-// Function to upload a single file with presigned URL
+async fn get_presigned_urls_batch(
+    prepared: &[(PreparedUpload, FileCheckItem)],
+    config: &UploadConfig,
+    client: &SharedHttpClient,
+    app_handle: &AppHandle,
+) -> Result<Vec<FileCheckResult>, String> {
+    if prepared.is_empty() {
+        return Ok(vec![]);
+    }
+
+    info!(
+        "Requesting presigned URLs for {} files in batch",
+        prepared.len()
+    );
+
+    let file_check_items: Vec<FileCheckItem> = prepared
+        .iter()
+        .map(|(_, check)| FileCheckItem {
+            file_name: check.file_name.clone(),
+            content_type: check.content_type.clone(),
+            crc32c: check.crc32c.clone(),
+            file_created_at: check.file_created_at.clone(),
+            file_modified_at: check.file_modified_at.clone(),
+        })
+        .collect();
+
+    let token = get_auth_token(app_handle)?;
+    let batch_url = format!("{}/api/sync/get_presigned_batch", config.server_url);
+
+    debug!(
+        "Sending batch request to: {} with {} files",
+        batch_url,
+        file_check_items.len()
+    );
+
+    let mut request = client.post(&batch_url).json(&GetPresignedBatchBody {
+        files: file_check_items,
+    });
+
+    if let Some(token_str) = &token {
+        request = request.header("Authorization", format!("Bearer {token_str}"));
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send batch presigned request: {e}"))?;
+
+    let response = check_response(response, "Batch presigned request").await?;
+
+    let batch_response: GetPresignedBatchResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse batch presigned response: {e}"))?;
+
+    info!(
+        "Batch request successful: {} files processed",
+        batch_response.files.len()
+    );
+
+    Ok(batch_response.files)
+}
+
+// ── Single file upload ──────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
 async fn upload_file(
-    upload_item: &UploadItem,
+    item: &UploadItem,
+    file_content: Vec<u8>,
+    content_type: &str,
     upload_url: &str,
     file_id: &str,
     config: &UploadConfig,
+    client: &SharedHttpClient,
     app_handle: &AppHandle,
 ) -> Result<String, String> {
     info!(
         "Starting upload for file: {} (attempt: {})",
-        upload_item.relative_path,
-        upload_item.retry_count + 1
+        item.relative_path,
+        item.retry_count + 1
     );
 
-    // Emit uploading status
-    emit_file_upload_status(&upload_item.relative_path, STATUS_UPLOADING, None, app_handle);
-
-    // Read file content
-    let file_content = tokio::fs::read(&upload_item.path).await.map_err(|e| {
-        let error_msg = format!("Failed to read file '{}': {}", upload_item.relative_path, e);
-        error!("{}", error_msg);
-        error_msg
-    })?;
+    emit_file_upload_status(&item.relative_path, STATUS_UPLOADING, None, app_handle);
 
     let file_size = file_content.len();
     debug!(
-        "Read {} bytes from file: {}",
-        file_size, upload_item.relative_path
+        "Uploading {} bytes for file: {}",
+        file_size, item.relative_path
     );
 
-    let content_type = get_content_type(&upload_item.path);
-    debug!(
-        "Detected content type '{}' for file: {}",
-        content_type, upload_item.relative_path
-    );
-
-    // Upload file to presigned URL
-    debug!(
-        "Uploading {} bytes to presigned URL for file: {}",
-        file_size, upload_item.relative_path
-    );
-
-    let client = reqwest::Client::new();
-    let upload_response = client
+    let response = client
         .put(upload_url)
         .header("Content-Type", content_type)
         .body(file_content)
         .send()
         .await
         .map_err(|e| {
-            let error_msg = format!(
+            format!(
                 "Failed to upload file '{}' to presigned URL: {}",
-                upload_item.relative_path, e
-            );
-            error!("{}", error_msg);
-            error_msg
+                item.relative_path, e
+            )
         })?;
 
-    if !upload_response.status().is_success() {
-        let status = upload_response.status();
-        let response_text = upload_response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unable to read response".to_string());
-        let error_msg = format!(
-            "Upload failed for '{}' with status {}: {}",
-            upload_item.relative_path, status, response_text
-        );
-        error!("{}", error_msg);
-        return Err(error_msg);
-    }
+    check_response(response, &format!("Upload for '{}'", item.relative_path)).await?;
 
     info!(
         "Successfully uploaded file: {} ({} bytes)",
-        upload_item.relative_path, file_size
+        item.relative_path, file_size
     );
 
-    // Update file metadata after successful upload
-    if let Err(e) = update_file_metadata(&file_id, config, app_handle).await {
+    // Update file metadata (non-fatal if it fails)
+    if let Err(e) = update_file_metadata(file_id, config, client, app_handle).await {
         warn!(
             "Failed to update metadata for file '{}' (file_id: {}): {}",
-            upload_item.relative_path, file_id, e
+            item.relative_path, file_id, e
         );
-        // Don't fail the entire upload if metadata update fails
-        // Just log the warning and continue
     }
 
-    // Emit upload success event
-    let _ = app_handle.emit("file_uploaded", &upload_item.relative_path);
-
-    // Emit uploaded status
-    emit_file_upload_status(&upload_item.relative_path, STATUS_UPLOADED, None, app_handle);
+    let _ = app_handle.emit("file_uploaded", &item.relative_path);
+    emit_file_upload_status(&item.relative_path, STATUS_UPLOADED, None, app_handle);
 
     Ok(file_id.to_string())
 }
 
-// Function to update file metadata after successful upload
 async fn update_file_metadata(
     file_id: &str,
     config: &UploadConfig,
+    client: &SharedHttpClient,
     app_handle: &AppHandle,
 ) -> Result<(), String> {
-    info!("Updating metadata for file ID: {}", file_id);
-
-    // Get token from store
-    let token = {
-        let store = app_handle.store(SETTINGS_STORE_FILENAME)
-            .map_err(|e| format!("Failed to access store: {}", e))?;
-        store.get("token").unwrap_or_default()
-    };
-
-    let client = reqwest::Client::new();
+    let token = get_auth_token(app_handle)?;
     let metadata_url = format!("{}/api/sync/{}/update_metadata", config.server_url, file_id);
-    
-    debug!("Sending metadata update request to: {}", metadata_url);
 
-    let mut request_builder = client.post(&metadata_url);
+    debug!("Sending metadata update request to: {metadata_url}");
 
-    // Add Authorization header if token exists
-    if let Some(token_str) = token.as_str() {
-        request_builder = request_builder.header("Authorization", format!("Bearer {}", token_str));
-        debug!("Added Bearer token to metadata update request");
+    let mut request = client.post(&metadata_url);
+    if let Some(token_str) = &token {
+        request = request.header("Authorization", format!("Bearer {token_str}"));
     }
 
-    let response = request_builder
+    let response = request
         .send()
         .await
-        .map_err(|e| {
-            let error_msg = format!(
-                "Failed to send metadata update request for file ID '{}': {}",
-                file_id, e
-            );
-            error!("{}", error_msg);
-            error_msg
-        })?;
+        .map_err(|e| format!("Failed to send metadata update for file ID '{file_id}': {e}"))?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let response_text = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unable to read response".to_string());
-        let error_msg = format!(
-            "Metadata update failed for file ID '{}' with status {}: {}",
-            file_id, status, response_text
-        );
-        error!("{}", error_msg);
-        return Err(error_msg);
-    }
+    check_response(
+        response,
+        &format!("Metadata update for file ID '{file_id}'"),
+    )
+    .await?;
 
-    info!("Successfully updated metadata for file ID: {}", file_id);
+    info!("Successfully updated metadata for file ID: {file_id}");
     Ok(())
 }
 
-// Background upload processor with batch presigned URLs and concurrent uploads
+// ── Background queue processor ──────────────────────────────────────────
+
+/// Drain up to MAX_BATCH_SIZE items that have aged past the upload delay.
+fn collect_ready_items(queue: &mut VecDeque<UploadItem>, delay_ms: u64) -> Vec<UploadItem> {
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    let mut ready = Vec::new();
+    let mut indices_to_remove = Vec::new();
+
+    for (index, item) in queue.iter().enumerate() {
+        let item_age_ms = now_ms - (item.timestamp * 1000);
+        if item_age_ms >= delay_ms {
+            ready.push(item.clone());
+            indices_to_remove.push(index);
+            if ready.len() >= MAX_BATCH_SIZE {
+                break;
+            }
+        }
+    }
+
+    for index in indices_to_remove.iter().rev() {
+        queue.remove(*index);
+    }
+
+    if !ready.is_empty() || !queue.is_empty() {
+        debug!(
+            "Collected {} ready files for batch processing (queue remaining: {})",
+            ready.len(),
+            queue.len()
+        );
+    }
+
+    ready
+}
+
+fn emit_progress(
+    upload_progress: &UploadProgressState,
+    upload_queue: &UploadQueue,
+    app_handle: &AppHandle,
+) {
+    let mut progress = upload_progress.lock().unwrap();
+    progress.total_queued = upload_queue.lock().unwrap().len();
+    let _ = app_handle.emit("upload_progress", &*progress);
+}
+
 pub async fn process_upload_queue(
     upload_queue: UploadQueue,
     upload_config: UploadConfigState,
     upload_progress: UploadProgressState,
+    http_client: SharedHttpClient,
     app_handle: AppHandle,
 ) {
-    // Start with default concurrency, will be updated when config changes
     let mut semaphore = Arc::new(Semaphore::new(DEFAULT_MAX_CONCURRENT_UPLOADS));
     let mut last_max_concurrent = DEFAULT_MAX_CONCURRENT_UPLOADS;
 
@@ -627,241 +576,188 @@ pub async fn process_upload_queue(
         let config = upload_config.lock().unwrap().clone();
 
         if !config.enabled {
-            sleep(Duration::from_millis(DISABLED_CHECK_INTERVAL_MS)).await;
+            sleep(DISABLED_CHECK_INTERVAL).await;
             continue;
         }
 
-        // Update semaphore if concurrency setting changed
+        // Recreate semaphore if concurrency setting changed
         if config.max_concurrent_uploads != last_max_concurrent {
             semaphore = Arc::new(Semaphore::new(config.max_concurrent_uploads));
             last_max_concurrent = config.max_concurrent_uploads;
         }
 
-        // Collect up to 1000 ready items for batch processing
         let ready_items = {
             let mut queue = upload_queue.lock().unwrap();
-            let current_time = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64;
-
-            let mut ready = Vec::new();
-            let mut indices_to_remove = Vec::new();
-
-            for (index, item) in queue.iter().enumerate() {
-                let item_age_ms = current_time - (item.timestamp * 1000);
-                if item_age_ms >= config.upload_delay_ms {
-                    ready.push(item.clone());
-                    indices_to_remove.push(index);
-
-                    if ready.len() >= MAX_BATCH_SIZE {
-                        break; // Batch endpoint limit
-                    }
-                }
-            }
-
-            // Remove ready items from queue (in reverse order to maintain indices)
-            for index in indices_to_remove.iter().rev() {
-                queue.remove(*index);
-            }
-
-            // Only log when we have files to process or files waiting
-            if !ready.is_empty() || queue.len() > 0 {
-                debug!(
-                    "Collected {} ready files for batch processing (queue remaining: {})",
-                    ready.len(),
-                    queue.len()
-                );
-            }
-
-            ready
+            collect_ready_items(&mut queue, config.upload_delay_ms)
         };
 
-        // If we have ready items, process them as a batch
-        if !ready_items.is_empty() {
-            // Update progress to show queue size
-            {
-                let mut progress = upload_progress.lock().unwrap();
-                let queue_len = upload_queue.lock().unwrap().len();
-                progress.total_queued = queue_len;
-                let _ = app_handle.emit("upload_progress", &*progress);
-            }
+        if ready_items.is_empty() {
+            sleep(QUEUE_POLL_INTERVAL).await;
+            continue;
+        }
 
-            // Get batch presigned URLs
-            let batch_results = match get_presigned_urls_batch(
-                ready_items.clone(),
-                &config,
-                &app_handle,
-            )
-            .await
-            {
+        emit_progress(&upload_progress, &upload_queue, &app_handle);
+
+        // Read files and prepare batch request
+        let prepared = prepare_batch_items(ready_items.clone()).await;
+
+        // Get presigned URLs for the batch
+        let batch_results =
+            match get_presigned_urls_batch(&prepared, &config, &http_client, &app_handle).await {
                 Ok(results) => results,
                 Err(e) => {
-                    error!("Batch presigned request failed: {}", e);
-
-                    // Re-queue all items for retry
+                    error!("Batch presigned request failed: {e}");
                     {
                         let mut queue = upload_queue.lock().unwrap();
                         for item in ready_items {
                             queue.push_back(item);
                         }
-                    } // Drop mutex guard before await
-
-                    sleep(Duration::from_secs(RETRY_DELAY_SECS)).await;
+                    }
+                    sleep(RETRY_DELAY).await;
                     continue;
                 }
             };
 
-            // Process batch results
-            for (item, result) in batch_results {
-                // Handle "exists" status - file already synced
-                if result.status == STATUS_EXISTS {
-                    info!(
-                        "File '{}' already exists (file_id: {}), skipping upload",
-                        item.relative_path, result.file_id
-                    );
+        // Process each result
+        for result in batch_results {
+            // Find the matching prepared upload
+            let prepared_upload = prepared
+                .iter()
+                .find(|(upload, _)| upload.item.relative_path == result.file_name);
 
-                    // Emit upload success event
-                    let _ = app_handle.emit("file_uploaded", &item.relative_path);
-                    let _ = app_handle.emit("upload_success", &item.relative_path);
+            let Some((prepared, _)) = prepared_upload else {
+                warn!("No matching prepared upload for: {}", result.file_name);
+                continue;
+            };
 
-                    // Emit uploaded status
-                    emit_file_upload_status(&item.relative_path, STATUS_UPLOADED, None, &app_handle);
-
-                    // Update progress
-                    {
-                        let mut progress = upload_progress.lock().unwrap();
-                        progress.total_uploaded += 1;
-                        let _ = app_handle.emit("upload_progress", &*progress);
-                    }
-
-                    continue;
+            if result.status == STATUS_EXISTS {
+                info!(
+                    "File '{}' already exists (file_id: {}), skipping upload",
+                    prepared.item.relative_path, result.file_id
+                );
+                let _ = app_handle.emit("file_uploaded", &prepared.item.relative_path);
+                let _ = app_handle.emit("upload_success", &prepared.item.relative_path);
+                emit_file_upload_status(
+                    &prepared.item.relative_path,
+                    STATUS_UPLOADED,
+                    None,
+                    &app_handle,
+                );
+                {
+                    let mut progress = upload_progress.lock().unwrap();
+                    progress.total_uploaded += 1;
+                    let _ = app_handle.emit("upload_progress", &*progress);
                 }
-
-                // Handle "needs_upload" status - proceed with actual upload
-                if result.status == STATUS_NEEDS_UPLOAD {
-                    let upload_url = match result.upload_url {
-                        Some(url) => url,
-                        None => {
-                            warn!(
-                                "File '{}' needs upload but no URL provided, re-queuing",
-                                item.relative_path
-                            );
-                            let mut queue = upload_queue.lock().unwrap();
-                            queue.push_back(item);
-                            continue;
-                        }
-                    };
-
-                    // Wait for a semaphore permit before uploading
-                    let permit = semaphore.clone().acquire_owned().await.unwrap();
-
-                    // Spawn concurrent upload task
-                    let config_clone = config.clone();
-                    let app_handle_clone = app_handle.clone();
-                    let upload_queue_clone = upload_queue.clone();
-                    let upload_progress_clone = upload_progress.clone();
-                    let file_id = result.file_id.clone();
-                    let mut item = item.clone();
-
-                    tauri::async_runtime::spawn(async move {
-                        let upload_result = upload_file(
-                            &item,
-                            &upload_url,
-                            &file_id,
-                            &config_clone,
-                            &app_handle_clone,
-                        )
-                        .await;
-
-                        match upload_result {
-                            Ok(file_id) => {
-                                debug!(
-                                    "Upload completed successfully for: {} (file_id: {})",
-                                    item.relative_path, file_id
-                                );
-                                let _ = app_handle_clone.emit("upload_success", &item.relative_path);
-
-                                // Update progress
-                                {
-                                    let mut progress = upload_progress_clone.lock().unwrap();
-                                    progress.total_uploaded += 1;
-                                    let queue_len = upload_queue_clone.lock().unwrap().len();
-                                    progress.total_queued = queue_len;
-                                    let _ = app_handle_clone.emit("upload_progress", &*progress);
-                                }
-                            }
-                            Err(e) => {
-                                item.retry_count += 1;
-                                if item.retry_count < MAX_RETRY_COUNT {
-                                    warn!(
-                                        "Upload failed for '{}' (attempt {}/{}), will retry: {}",
-                                        item.relative_path, item.retry_count, MAX_RETRY_COUNT, e
-                                    );
-
-                                    // Re-queue for retry with updated timestamp
-                                    item.timestamp = SystemTime::now()
-                                        .duration_since(UNIX_EPOCH)
-                                        .unwrap()
-                                        .as_secs();
-
-                                    let mut queue = upload_queue_clone.lock().unwrap();
-                                    queue.push_back(item);
-                                } else {
-                                    error!(
-                                        "Upload permanently failed for '{}' after {} attempts. Final error: {}",
-                                        item.relative_path, MAX_RETRY_COUNT, e
-                                    );
-
-                                    let _ = app_handle_clone
-                                        .emit("upload_failed", (&item.relative_path, e.clone()));
-
-                                    // Emit failed status
-                                    emit_file_upload_status(
-                                        &item.relative_path,
-                                        STATUS_FAILED,
-                                        Some(e),
-                                        &app_handle_clone,
-                                    );
-
-                                    // Update failed count
-                                    {
-                                        let mut progress = upload_progress_clone.lock().unwrap();
-                                        progress.total_failed += 1;
-                                        let queue_len = upload_queue_clone.lock().unwrap().len();
-                                        progress.total_queued = queue_len;
-                                        let _ =
-                                            app_handle_clone.emit("upload_progress", &*progress);
-                                    }
-                                }
-                            }
-                        }
-
-                        // Release the permit when upload is done
-                        drop(permit);
-                    });
-
-                    // Small delay between spawning uploads
-                    sleep(Duration::from_millis(UPLOAD_SPAWN_DELAY_MS)).await;
-                }
+                continue;
             }
 
-            // Small delay after processing batch
-            sleep(Duration::from_millis(BATCH_PROCESSING_DELAY_MS)).await;
-        } else {
-            // No ready items, wait before checking again
-            sleep(Duration::from_millis(QUEUE_PROCESSING_INTERVAL_MS)).await;
+            if result.status != STATUS_NEEDS_UPLOAD {
+                continue;
+            }
+
+            let upload_url = match result.upload_url {
+                Some(url) => url,
+                None => {
+                    warn!(
+                        "File '{}' needs upload but no URL provided, re-queuing",
+                        prepared.item.relative_path
+                    );
+                    upload_queue
+                        .lock()
+                        .unwrap()
+                        .push_back(prepared.item.clone());
+                    continue;
+                }
+            };
+
+            // Spawn concurrent upload task
+            let permit = semaphore.clone().acquire_owned().await.unwrap();
+            let config_clone = config.clone();
+            let client_clone = http_client.clone();
+            let app_clone = app_handle.clone();
+            let queue_clone = upload_queue.clone();
+            let progress_clone = upload_progress.clone();
+            let file_id = result.file_id.clone();
+            let mut item = prepared.item.clone();
+            let file_content = prepared.file_content.clone();
+            let content_type = prepared.content_type.clone();
+
+            tauri::async_runtime::spawn(async move {
+                let result = upload_file(
+                    &item,
+                    file_content,
+                    &content_type,
+                    &upload_url,
+                    &file_id,
+                    &config_clone,
+                    &client_clone,
+                    &app_clone,
+                )
+                .await;
+
+                match result {
+                    Ok(file_id) => {
+                        debug!(
+                            "Upload completed for: {} (file_id: {})",
+                            item.relative_path, file_id
+                        );
+                        let _ = app_clone.emit("upload_success", &item.relative_path);
+                        {
+                            let mut progress = progress_clone.lock().unwrap();
+                            progress.total_uploaded += 1;
+                            progress.total_queued = queue_clone.lock().unwrap().len();
+                            let _ = app_clone.emit("upload_progress", &*progress);
+                        }
+                    }
+                    Err(e) => {
+                        item.retry_count += 1;
+                        if item.retry_count < MAX_RETRY_COUNT {
+                            warn!(
+                                "Upload failed for '{}' (attempt {}/{}), will retry: {}",
+                                item.relative_path, item.retry_count, MAX_RETRY_COUNT, e
+                            );
+                            item.timestamp = now_secs();
+                            queue_clone.lock().unwrap().push_back(item);
+                        } else {
+                            error!(
+                                "Upload permanently failed for '{}' after {} attempts: {}",
+                                item.relative_path, MAX_RETRY_COUNT, e
+                            );
+                            let _ =
+                                app_clone.emit("upload_failed", (&item.relative_path, e.clone()));
+                            emit_file_upload_status(
+                                &item.relative_path,
+                                STATUS_FAILED,
+                                Some(e),
+                                &app_clone,
+                            );
+                            {
+                                let mut progress = progress_clone.lock().unwrap();
+                                progress.total_failed += 1;
+                                progress.total_queued = queue_clone.lock().unwrap().len();
+                                let _ = app_clone.emit("upload_progress", &*progress);
+                            }
+                        }
+                    }
+                }
+
+                drop(permit);
+            });
+
+            sleep(UPLOAD_SPAWN_DELAY).await;
         }
+
+        sleep(BATCH_PROCESSING_DELAY).await;
     }
 }
 
-// Tauri Commands
+// ── Tauri commands ──────────────────────────────────────────────────────
+
 #[tauri::command]
 pub fn get_upload_config(
     upload_config: tauri::State<'_, UploadConfigState>,
 ) -> Result<UploadConfig, String> {
-    let config = upload_config.lock().unwrap().clone();
-    Ok(config)
+    Ok(upload_config.lock().unwrap().clone())
 }
 
 #[tauri::command]
@@ -869,8 +765,7 @@ pub fn set_upload_config(
     config: UploadConfig,
     upload_config: tauri::State<'_, UploadConfigState>,
 ) -> Result<String, String> {
-    let mut current_config = upload_config.lock().unwrap();
-    *current_config = config;
+    *upload_config.lock().unwrap() = config;
     Ok("Upload configuration updated".to_string())
 }
 
@@ -878,21 +773,18 @@ pub fn set_upload_config(
 pub fn get_upload_progress(
     upload_progress: tauri::State<'_, UploadProgressState>,
 ) -> Result<UploadProgress, String> {
-    let progress = upload_progress.lock().unwrap().clone();
-    Ok(progress)
+    Ok(upload_progress.lock().unwrap().clone())
 }
 
 #[tauri::command]
 pub fn clear_upload_queue(upload_queue: tauri::State<'_, UploadQueue>) -> Result<String, String> {
-    let mut queue = upload_queue.lock().unwrap();
-    queue.clear();
+    upload_queue.lock().unwrap().clear();
     Ok("Upload queue cleared".to_string())
 }
 
 #[tauri::command]
 pub fn get_queue_size(upload_queue: tauri::State<'_, UploadQueue>) -> Result<usize, String> {
-    let queue = upload_queue.lock().unwrap();
-    Ok(queue.len())
+    Ok(upload_queue.lock().unwrap().len())
 }
 
 #[tauri::command]
@@ -903,13 +795,12 @@ pub async fn trigger_manual_upload(
     upload_config: tauri::State<'_, UploadConfigState>,
     app_handle: AppHandle,
 ) -> Result<String, String> {
-    add_to_upload_queue_async(
+    add_to_upload_queue_sync(
         file_path.clone(),
         base_path,
         upload_queue.inner(),
         upload_config.inner(),
         &app_handle,
-    )
-    .await;
-    Ok(format!("File queued for upload: {}", file_path))
+    );
+    Ok(format!("File queued for upload: {file_path}"))
 }
