@@ -14,7 +14,7 @@ export const Route = createRootRoute({
     return (
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <TooltipProvider>
-            <ScrollArea className="h-screen">
+            <ScrollArea className="h-screen" id="root-scroll-area">
               {/* child routes render here */}
               <Outlet />
 

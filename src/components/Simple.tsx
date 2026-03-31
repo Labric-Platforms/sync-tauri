@@ -194,7 +194,7 @@ export default function Simple() {
   }, []);
 
   useEffect(() => {
-    const viewport = document.querySelector('[data-slot="scroll-area-viewport"]');
+    const viewport = document.querySelector('#root-scroll-area [data-slot="scroll-area-viewport"]');
     if (!viewport) return;
     const handleScroll = () => {
       setShowScrollToTop(viewport.scrollTop > 200);
@@ -271,7 +271,7 @@ export default function Simple() {
   }
 
   function scrollToTop() {
-    document.querySelector('[data-slot="scroll-area-viewport"]')?.scrollTo({ top: 0, behavior: "smooth" });
+    document.querySelector('#root-scroll-area [data-slot="scroll-area-viewport"]')?.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   const getUploadStatus = useCallback(
