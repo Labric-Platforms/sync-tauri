@@ -353,10 +353,10 @@ export default function Simple() {
           <>
             <div
               ref={logsRef}
-              className="sticky top-0 bg-background m-0 mb-2 space-y-3 py-2 z-40"
+              className="sticky top-0 m-0 space-y-3 my-2 pb-2 z-40"
             >
-              <div className="relative">
-                <div className="flex flex-col border dark:border-none rounded-full px-4 py-2 shadow-sm dark:bg-input/30">
+              <div className="relative rounded-full bg-background">
+                <div className="flex flex-col border dark:border-none rounded-full px-4 py-3 shadow-sm dark:bg-input/30">
                   <div className="flex items-center gap-2">
 
                     <Search className="text-muted-foreground h-4 w-4 flex-shrink-0 ml-1" />
