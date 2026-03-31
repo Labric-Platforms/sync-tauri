@@ -365,7 +365,7 @@ export default function Simple() {
             >
               <div className="relative rounded-full bg-background">
                 <div className="flex flex-col border dark:border-none rounded-full px-4 py-3 shadow-sm dark:bg-input/30">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
 
                     <Search className="text-muted-foreground h-4 w-4 flex-shrink-0 ml-1" />
                     <Input

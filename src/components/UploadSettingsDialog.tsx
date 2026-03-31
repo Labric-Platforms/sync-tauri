@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -13,6 +13,15 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
+import { toast } from "sonner";
 import { useUploadManager } from "@/hooks/useUploadManager";
 
 interface UploadSettingsSheetProps {
@@ -20,99 +29,95 @@ interface UploadSettingsSheetProps {
 }
 
 function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
-  const {
-    config,
-    isLoading,
-    error,
-    updateConfig,
-    updateUploadDelay,
-    updateIgnoredPatterns,
-    toggleUploads,
-    toggleIgnoreExistingFiles,
-  } = useUploadManager();
+  const { config, isLoading, error, updateConfig } = useUploadManager();
 
+  const [open, setOpen] = useState(false);
+
+  // Draft state
+  const [enabled, setEnabled] = useState(false);
+  const [ignoreExisting, setIgnoreExisting] = useState(false);
   const [delayInput, setDelayInput] = useState("");
   const [concurrencyInput, setConcurrencyInput] = useState("");
+  const [ignoredPatterns, setIgnoredPatterns] = useState<string[]>([]);
   const [newPattern, setNewPattern] = useState("");
 
-  // Initialize inputs when config loads
-  useEffect(() => {
+  const resetDraft = useCallback(() => {
     if (config) {
+      setEnabled(config.enabled);
+      setIgnoreExisting(config.ignore_existing_files);
       setDelayInput((config.upload_delay_ms / 1000).toString());
       setConcurrencyInput(config.max_concurrent_uploads.toString());
+      setIgnoredPatterns([...config.ignored_patterns]);
+      setNewPattern("");
     }
   }, [config]);
 
-  const handleToggleUploads = async (checked: boolean) => {
-    try {
-      await toggleUploads(checked);
-    } catch (err) {
-      console.error("Failed to toggle uploads:", err);
+  useEffect(() => {
+    if (open) {
+      resetDraft();
+      setDelayError("");
+      setConcurrencyError("");
+    }
+  }, [open, resetDraft]);
+
+  const handleAddPattern = () => {
+    const trimmed = newPattern.trim();
+    if (trimmed && !ignoredPatterns.includes(trimmed)) {
+      setIgnoredPatterns((prev) => [...prev, trimmed]);
+      setNewPattern("");
     }
   };
 
-  const handleToggleIgnoreExisting = async (checked: boolean) => {
-    try {
-      await toggleIgnoreExistingFiles(checked);
-    } catch (err) {
-      console.error("Failed to toggle ignore existing files:", err);
-    }
-  };
+  const [delayError, setDelayError] = useState("");
+  const [concurrencyError, setConcurrencyError] = useState("");
 
-  const handleUpdateDelay = async () => {
+  const validate = () => {
+    let valid = true;
     const delay = parseFloat(delayInput);
-    if (!isNaN(delay) && delay >= 0) {
-      try {
-        // Convert seconds to milliseconds for the backend
-        await updateUploadDelay(Math.round(delay * 1000));
-      } catch (err) {
-        console.error("Failed to update delay:", err);
-      }
-    }
-  };
-
-  const handleUpdateConcurrency = async () => {
     const concurrency = parseInt(concurrencyInput);
-    if (!isNaN(concurrency) && concurrency >= 1 && concurrency <= 20) {
-      try {
-        if (config) {
-          const newConfig = { ...config, max_concurrent_uploads: concurrency };
-          await updateConfig(newConfig);
-        }
-      } catch (err) {
-        console.error("Failed to update concurrency:", err);
-      }
+
+    if (isNaN(delay) || delay < 0) {
+      setDelayError("Must be a number ≥ 0.");
+      valid = false;
+    } else {
+      setDelayError("");
     }
+
+    if (isNaN(concurrency) || concurrency < 1 || concurrency > 20) {
+      setConcurrencyError("Must be between 1 and 20.");
+      valid = false;
+    } else {
+      setConcurrencyError("");
+    }
+
+    return valid;
   };
 
-  const handleAddPattern = async () => {
-    if (newPattern.trim() && config) {
-      try {
-        const updatedPatterns = [...config.ignored_patterns, newPattern.trim()];
-        await updateIgnoredPatterns(updatedPatterns);
-        setNewPattern("");
-      } catch (err) {
-        console.error("Failed to add pattern:", err);
-      }
-    }
-  };
+  const handleSave = async () => {
+    if (!config || !validate()) return;
+    const delay = parseFloat(delayInput);
+    const concurrency = parseInt(concurrencyInput);
 
-  const handleRemovePattern = async (patternToRemove: string) => {
-    if (config) {
-      try {
-        const updatedPatterns = config.ignored_patterns.filter(
-          (pattern) => pattern !== patternToRemove
-        );
-        await updateIgnoredPatterns(updatedPatterns);
-      } catch (err) {
-        console.error("Failed to remove pattern:", err);
-      }
+    try {
+      await updateConfig({
+        ...config,
+        enabled,
+        ignore_existing_files: ignoreExisting,
+        upload_delay_ms: Math.round(delay * 1000),
+        max_concurrent_uploads: concurrency,
+        ignored_patterns: ignoredPatterns,
+      });
+      toast.success("Settings saved");
+      setOpen(false);
+    } catch (err) {
+      console.error("Failed to save settings:", err);
+      toast.error("Failed to save settings");
     }
   };
 
   if (isLoading || error || !config) {
     return (
-      <Sheet>
+      <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>{children}</SheetTrigger>
         <SheetContent>
           <SheetHeader>
@@ -127,21 +132,16 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
   }
 
   return (
-    <Sheet>
+    <Sheet open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <div tabIndex={-1}>
-
-          <SheetTrigger asChild>
-            {children}
-          </SheetTrigger>
+            <SheetTrigger asChild>{children}</SheetTrigger>
           </div>
         </TooltipTrigger>
-        <TooltipContent collisionPadding={8}>
-          Upload Settings
-        </TooltipContent>
+        <TooltipContent collisionPadding={8}>Upload Settings</TooltipContent>
       </Tooltip>
-      <SheetContent className="overflow-y-auto w-[400px] sm:w-[540px]">
+      <SheetContent className="w-[400px] sm:w-[540px] flex flex-col">
         <SheetHeader>
           <SheetTitle>Upload Settings</SheetTitle>
           <SheetDescription className="sr-only">
@@ -149,126 +149,116 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
           </SheetDescription>
         </SheetHeader>
 
-        <div className="space-y-6 px-4 pb-6">
-          {/* Upload Control */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <div className="text-sm font-medium">Enable Uploads</div>
-                <div className="text-sm text-muted-foreground">
-                  {config.enabled ? "Files are being uploaded on change" : "Files are not being uploaded on change"}
-                </div>
-              </div>
+        <div className="flex-1 overflow-y-auto px-4 pb-4">
+          <FieldGroup>
+            <Field orientation="horizontal" className="!items-center justify-between gap-4">
+              <FieldContent>
+                <FieldLabel htmlFor="enable-uploads">Enable Uploads</FieldLabel>
+                <FieldDescription>Upload files on change.</FieldDescription>
+              </FieldContent>
               <Switch
-                checked={config.enabled}
-                onCheckedChange={handleToggleUploads}
+                id="enable-uploads"
+                checked={enabled}
+                onCheckedChange={setEnabled}
               />
-            </div>
+            </Field>
 
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <div className="text-sm font-medium">Ignore Files Already in the Folder</div>
-                <div className="text-sm text-muted-foreground">
-                  {config.ignore_existing_files ? "Files already in the folder are not uploaded" : "Files already in the folder are uploaded"}
-                </div>
-              </div>
+            <Field orientation="horizontal" className="!items-center justify-between gap-4">
+              <FieldContent>
+                <FieldLabel htmlFor="ignore-existing">Ignore Existing Files</FieldLabel>
+                <FieldDescription>Skip files already in the folder.</FieldDescription>
+              </FieldContent>
               <Switch
-                checked={config.ignore_existing_files}
-                onCheckedChange={handleToggleIgnoreExisting}
+                id="ignore-existing"
+                checked={ignoreExisting}
+                onCheckedChange={setIgnoreExisting}
               />
-            </div>
+            </Field>
 
-          </div>
-
-          <Separator />
-
-          {/* Server Configuration */}
-          <div className="space-y-6">
-            <div>
-              <label htmlFor="delayInput" className="text-sm font-medium block mb-2">Upload Delay (seconds)</label>
-              <div className="flex gap-2">
-                <Input
-                  id="delayInput"
-                  type="number"
-                  value={delayInput}
-                  onChange={(e) => setDelayInput(e.target.value)}
-                  placeholder="2"
-                  min="0"
-                  step="0.1"
-                  className="flex-1"
-                />
-                <Button onClick={handleUpdateDelay} size="sm">
-                  Update
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Delay before uploading to batch rapid file changes
-              </p>
-            </div>
-
-            <div>
-              <label htmlFor="concurrencyInput" className="text-sm font-medium block mb-2">Max Concurrent Uploads</label>
-              <div className="flex gap-2">
-                <Input
-                  id="concurrencyInput"
-                  type="number"
-                  value={concurrencyInput}
-                  onChange={(e) => setConcurrencyInput(e.target.value)}
-                  placeholder="5"
-                  min="1"
-                  max="20"
-                  className="flex-1"
-                />
-                <Button onClick={handleUpdateConcurrency} size="sm">
-                  Update
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Number of files that can upload simultaneously (1-20)
-              </p>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Ignored Patterns */}
-          <div>
-            <label htmlFor="newPattern" className="text-sm font-medium block mb-2">Ignored File Patterns</label>
-            <div className="flex gap-2">
+            <Field data-invalid={!!delayError || undefined}>
+              <FieldLabel htmlFor="delayInput">Upload Delay (seconds)</FieldLabel>
               <Input
-                id="newPattern"
-                type="text"
-                value={newPattern}
-                onChange={(e) => setNewPattern(e.target.value)}
-                placeholder="*.tmp, .git/**, node_modules/**"
-                className="flex-1"
+                id="delayInput"
+                type="number"
+                value={delayInput}
+                onChange={(e) => { setDelayInput(e.target.value); setDelayError(""); }}
+                placeholder="2"
+                min="0"
+                step="0.1"
+                aria-invalid={!!delayError}
               />
-              <Button onClick={handleAddPattern} size="sm">
-                Add
-              </Button>
-            </div>
+              {delayError && <FieldError>{delayError}</FieldError>}
+            </Field>
 
-            <div className="flex flex-wrap gap-2 mt-3">
-              {config.ignored_patterns.map((pattern, index) => (
-                <Badge
-                  key={index}
-                  variant="secondary"
-                  className="cursor-pointer"
-                  onClick={() => handleRemovePattern(pattern)}
-                >
-                  {pattern} ×
-                </Badge>
-              ))}
-            </div>
+            <Field data-invalid={!!concurrencyError || undefined}>
+              <FieldLabel htmlFor="concurrencyInput">Max Concurrent Uploads</FieldLabel>
+              <Input
+                id="concurrencyInput"
+                type="number"
+                value={concurrencyInput}
+                onChange={(e) => { setConcurrencyInput(e.target.value); setConcurrencyError(""); }}
+                placeholder="5"
+                min="1"
+                max="20"
+                aria-invalid={!!concurrencyError}
+              />
+              {concurrencyError && <FieldError>{concurrencyError}</FieldError>}
+            </Field>
 
-            <p className="text-xs text-muted-foreground mt-1">
-              Matching files will not be uploaded
-            </p>
-          </div>
+            <Field>
+              <FieldLabel htmlFor="newPattern">Ignored Patterns</FieldLabel>
+              <div className="flex gap-2">
+                <Input
+                  id="newPattern"
+                  type="text"
+                  value={newPattern}
+                  onChange={(e) => setNewPattern(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddPattern();
+                    }
+                  }}
+                  placeholder="*.tmp, .git/**"
+                  className="flex-1"
+                />
+                <Button onClick={handleAddPattern} size="sm" variant="secondary">
+                  Add
+                </Button>
+              </div>
+              {ignoredPatterns.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {ignoredPatterns.map((pattern, index) => (
+                    <Badge
+                      key={index}
+                      variant="secondary"
+                      className="cursor-pointer"
+                      onClick={() =>
+                        setIgnoredPatterns((prev) =>
+                          prev.filter((p) => p !== pattern)
+                        )
+                      }
+                    >
+                      {pattern} ×
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </Field>
+          </FieldGroup>
         </div>
+
+        <SheetFooter className="border-t flex-row gap-2 px-4 py-4">
+          <Button variant="outline" className="flex-1 rounded-full" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button className="flex-1 rounded-full" onClick={handleSave}>
+            Save
+          </Button>
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   );
 }
 
-export default UploadSettingsSheet; 
+export default UploadSettingsSheet;
