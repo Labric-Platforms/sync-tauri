@@ -13,6 +13,7 @@ import {
   CheckCircle,
   XCircle,
   EyeOff,
+  Folder,
   Loader2,
   ArrowUp,
   Search,
@@ -240,6 +241,11 @@ export default function Simple() {
         tooltip: "Ignored (matches ignore pattern)",
         className: "text-muted-foreground",
       },
+      directory: {
+        icon: Folder,
+        tooltip: "Directory",
+        className: "text-muted-foreground",
+      },
     };
 
     const config = statusConfig[status];
@@ -401,11 +407,10 @@ export default function Simple() {
             <TooltipTrigger>
               <div className="flex items-center space-x-1.5">
                 <div
-                  className={`w-2 h-2 rounded-full ${
-                    heartbeatStatus?.status?.status === "online"
+                  className={`w-2 h-2 rounded-full ${heartbeatStatus?.status?.status === "online"
                       ? "bg-success"
                       : "bg-destructive"
-                  }`}
+                    }`}
                 ></div>
                 <span>
                   {heartbeatStatus?.status?.status === "online"

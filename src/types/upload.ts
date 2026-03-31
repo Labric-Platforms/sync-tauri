@@ -28,6 +28,6 @@ export interface UploadEvent {
 
 export interface FileUploadStatus {
   relative_path: string;
-  status: 'pending' | 'queued' | 'uploading' | 'uploaded' | 'failed' | 'ignored';
+  status: 'pending' | 'queued' | 'uploading' | 'uploaded' | 'failed' | 'ignored' | 'directory';
   error?: string;
 } 

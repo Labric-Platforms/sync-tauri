@@ -29,6 +29,7 @@ const DISABLED_CHECK_INTERVAL: Duration = Duration::from_millis(1000);
 const STATUS_EXISTS: &str = "exists";
 const STATUS_NEEDS_UPLOAD: &str = "needs_upload";
 const STATUS_IGNORED: &str = "ignored";
+pub const STATUS_DIRECTORY: &str = "directory";
 const STATUS_QUEUED: &str = "queued";
 const STATUS_UPLOADING: &str = "uploading";
 const STATUS_UPLOADED: &str = "uploaded";
@@ -140,7 +141,7 @@ struct PreparedUpload {
 
 // ── Small helpers ───────────────────────────────────────────────────────
 
-fn emit_file_upload_status(
+pub fn emit_file_upload_status(
     relative_path: &str,
     status: &str,
     error: Option<String>,
@@ -300,7 +301,7 @@ pub fn add_to_upload_queue_with_event_type(
         }
         Ok(_) => {
             debug!("Path '{relative_path}' is not a file, skipping upload");
-            emit_file_upload_status(&relative_path, STATUS_IGNORED, None, app_handle);
+            emit_file_upload_status(&relative_path, STATUS_DIRECTORY, None, app_handle);
         }
         Err(e) => {
             warn!("Failed to get metadata for file '{relative_path}': {e}");
