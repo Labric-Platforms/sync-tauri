@@ -48,7 +48,7 @@ function ProtectedLayout() {
     return (
       <div>
         <header className="container mx-auto p-6 pb-0 max-w-6xl flex justify-between items-center">
-          <h1>Labric Sync</h1>
+          <h1 className="text-2xl font-semibold">Labric Sync</h1>
         </header>
       </div>
     );
