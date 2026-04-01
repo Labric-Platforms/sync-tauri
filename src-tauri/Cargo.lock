@@ -2407,7 +2407,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "labric-sync-tauri"
+name = "labric-sync"
 version = "0.1.10"
 dependencies = [
  "base64 0.21.7",

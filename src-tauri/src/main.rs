@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    labric_sync_tauri_lib::run()
+    labric_sync_lib::run()
 }
