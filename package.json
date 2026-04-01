@@ -1,5 +1,5 @@
 {
-  "name": "labric-sync-tauri",
+  "name": "labric-sync",
   "private": true,
   "version": "0.1.10",
   "type": "module",
