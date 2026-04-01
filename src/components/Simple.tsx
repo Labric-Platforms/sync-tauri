@@ -92,6 +92,19 @@ function truncatePath(path: string, maxLength: number = 35): string {
   return "..." + path.slice(-(maxLength - 3));
 }
 
+function splitDirPath(dir: string): { name: string; parent: string } {
+  const sep = dir.includes("\\") ? "\\" : "/";
+  const parts = dir.replace(/[/\\]+$/, "").split(sep);
+  const name = parts.pop() || dir;
+  let parent = parts.join(sep);
+  // Replace home directory with ~ (macOS/Linux: /Users|home/<name>, Windows: X:\Users\<name>)
+  const ui = parts.indexOf("Users") !== -1 ? parts.indexOf("Users") : parts.indexOf("home");
+  if (ui !== -1 && parts[ui + 1]) {
+    parent = "~" + parent.slice(parts.slice(0, ui + 2).join(sep).length);
+  }
+  return { name, parent };
+}
+
 const FileChangeRow = memo(function FileChangeRow({
   change,
   status,
@@ -318,21 +331,24 @@ export default function Simple() {
 
         {/* Recent Directories */}
         {recentDirs.length > 0 && !selectedFolder && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <p className="text-xs font-medium text-muted-foreground">
               Recent folders
             </p>
             <div className="flex flex-col gap-2 items-start w-full">
-              {recentDirs.map((dir, index) => (
-                <button
-                  key={`${dir}-${index}`}
-                  onClick={() => selectRecentFolder(dir)}
-                  className="text-xs text-muted-foreground hover:underline text-left"
-                  title={dir}
-                >
-                  {dir}
-                </button>
-              ))}
+              {recentDirs.map((dir, index) => {
+                const { name, parent } = splitDirPath(dir);
+                return (
+                  <button
+                    key={`${dir}-${index}`}
+                    onClick={() => selectRecentFolder(dir)}
+                    className="text-xs text-muted-foreground hover:underline text-left py-0.5"
+                    title={dir}
+                  >
+                    {parent}/{name}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
