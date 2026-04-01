@@ -2408,7 +2408,7 @@ dependencies = [
 
 [[package]]
 name = "labric-sync"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "base64 0.21.7",
  "bytes",
