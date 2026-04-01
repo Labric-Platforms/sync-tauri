@@ -1,6 +1,6 @@
 [package]
 name = "labric-sync"
-version = "0.1.10"
+version = "0.1.11"
 description = "Labric Sync desktop app"
 authors = ["you"]
 edition = "2021"
