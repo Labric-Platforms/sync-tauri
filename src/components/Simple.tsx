@@ -116,7 +116,9 @@ const FileChangeRow = memo(function FileChangeRow({
         {StatusIcon && statusMeta && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <StatusIcon className={`h-4 w-4 ${statusMeta.className}`} />
+              <span className="inline-flex h-4 w-4 items-center justify-center">
+                <StatusIcon className={`h-4 w-4 ${statusMeta.className}`} />
+              </span>
             </TooltipTrigger>
             <TooltipContent>
               <p>{statusMeta.tooltip}</p>
