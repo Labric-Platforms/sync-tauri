@@ -121,7 +121,7 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
         <SheetTrigger asChild>{children}</SheetTrigger>
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>Upload Settings</SheetTitle>
+            <SheetTitle className="font-title">Upload Settings</SheetTitle>
             <SheetDescription className="sr-only">
               Configure upload behavior and file filters
             </SheetDescription>
@@ -143,7 +143,7 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
       </Tooltip>
       <SheetContent className="w-[400px] sm:w-[540px] flex flex-col">
         <SheetHeader>
-          <SheetTitle>Upload Settings</SheetTitle>
+          <SheetTitle className="font-title">Upload Settings</SheetTitle>
           <SheetDescription className="sr-only">
             Configure upload behavior and file filters
           </SheetDescription>
@@ -222,7 +222,7 @@ function UploadSettingsSheet({ children }: UploadSettingsSheetProps) {
                   placeholder="*.tmp, .git/**"
                   className="flex-1"
                 />
-                <Button onClick={handleAddPattern} size="sm" variant="secondary">
+                <Button onClick={handleAddPattern} variant="secondary">
                   Add
                 </Button>
               </div>
