@@ -21,7 +21,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml   # Lint Rust code
 - **Backend** (`src-tauri/src/`): Rust, Tauri 2, tokio async runtime
 - **IPC**: Frontend calls Rust via `invoke()` commands; Rust pushes to frontend via `emit()` events
 - **Key Rust modules**: `lib.rs` (commands + file watcher), `upload.rs` (queue processor), `heartbeat.rs` (30s heartbeat loop)
-- **Auth**: JWT tokens stored in Tauri Store, enrollment via 6-digit device code flow
+- **Auth**: JWT tokens stored in Tauri Store, pairing via 6-digit device code flow
 
 ## Tauri v2 Docs
 

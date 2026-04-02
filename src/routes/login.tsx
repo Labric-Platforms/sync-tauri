@@ -61,7 +61,7 @@ const CodeDisplay = ({ code, isLoading = false }: { code?: string; isLoading?: b
 };
 
 function Login() {
-  const [enrollmentCode, setEnrollmentCode] = useState<string | null>(null);
+  const [pairCode, setPairCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const isSigningInRef = useRef(false);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -83,8 +83,8 @@ function Login() {
         console.error('Error checking auth:', error);
       }
       
-      // If not signed in, start enrollment process
-      await initializeEnrollment();
+      // If not signed in, start pairing process
+      await initializePairing();
     };
     checkAuth();
   }, [navigate]);
@@ -112,17 +112,17 @@ function Login() {
     });
   };
 
-  const initializeEnrollment = async () => {
+  const initializePairing = async () => {
     setIsLoading(true);
     try {
       // Get device info
       const info = (await invoke("get_device_info")) as DeviceInfo;
       deviceInfoRef.current = info;
 
-      // Get enrollment code
-      await fetchEnrollmentCode(info);
+      // Get pair code
+      await fetchPairCode(info);
 
-      // Start polling for enrollment
+      // Start polling for pairing
       startPolling(info);
 
       // Auto-refresh code every 14 minutes (codes expire after 15)
@@ -131,18 +131,18 @@ function Login() {
       }
       refreshIntervalRef.current = setInterval(() => {
         if (deviceInfoRef.current) {
-          fetchEnrollmentCode(deviceInfoRef.current, true);
+          fetchPairCode(deviceInfoRef.current, true);
         }
       }, 14 * 60 * 1000);
 
     } catch (error) {
-      console.error('Failed to initialize enrollment:', error);
-      toast.error('Failed to initialize enrollment');
+      console.error('Failed to initialize pairing:', error);
+      toast.error('Failed to initialize pairing');
       setIsLoading(false);
     }
   };
 
-  const fetchEnrollmentCode = async (deviceInfo: DeviceInfo, isAutoRefresh = false) => {
+  const fetchPairCode = async (deviceInfo: DeviceInfo, isAutoRefresh = false) => {
     try {
       const requestBody: any = {
         hostname: deviceInfo.hostname,
@@ -155,7 +155,7 @@ function Login() {
         device_id: deviceInfo.device_id,
         device_fingerprint: deviceInfo.device_fingerprint
       };
-      
+
       // Include org ID if available
       try {
         const organizationId = await getOrganizationId();
@@ -167,22 +167,22 @@ function Login() {
       }
 
       const response = await apiCall('get_code', requestBody);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      
+
       if (data.success && data.otp_code) {
-        setEnrollmentCode(data.otp_code);
+        setPairCode(data.otp_code);
         if (isAutoRefresh) toast.info("Pair code refreshed");
       } else {
         throw new Error('Invalid response format');
       }
     } catch (error) {
-      console.error('Failed to fetch enrollment code:', error);
-      toast.error('Failed to fetch enrollment code');
+      console.error('Failed to fetch pair code:', error);
+      toast.error('Failed to fetch pair code');
     } finally {
       if (!isAutoRefresh) setIsLoading(false);
     }
@@ -196,7 +196,7 @@ function Login() {
 
     pollIntervalRef.current = setInterval(async () => {
       try {
-        const response = await apiCall('poll_enrollment', {
+        const response = await apiCall('poll_pairing', {
           device_fingerprint: deviceInfo.device_fingerprint
         });
 
@@ -204,7 +204,7 @@ function Login() {
 
         const data = await response.json();
         
-        if (data.success && data.enrolled && data.signin_token && !isSigningInRef.current) {
+        if (data.success && data.paired && data.signin_token && !isSigningInRef.current) {
           // Immediately set the flag to prevent duplicate calls
           isSigningInRef.current = true;
           
@@ -223,7 +223,7 @@ function Login() {
           });
         }
       } catch (error) {
-        console.error('Error polling enrollment:', error);
+        console.error('Error polling pairing:', error);
       }
     }, 1000);
   };
@@ -238,12 +238,12 @@ function Login() {
     navigate({ to: '/dashboard' });
   };
 
-  const handleOpenEnrollPage = async () => {
+  const handleOpenPairPage = async () => {
     try {
-      await openUrl("https://platform.labric.co/enroll");
+      await openUrl("https://platform.labric.co/pair");
     } catch (error) {
-      console.error('Failed to open enrollment page:', error);
-      toast.error('Failed to open enrollment page');
+      console.error('Failed to open pairing page:', error);
+      toast.error('Failed to open pairing page');
     }
   };
 
@@ -256,14 +256,14 @@ function Login() {
         </div>
 
         <div className="w-full max-w-sm flex flex-col items-center justify-center gap-4 mb-8">
-          <CodeDisplay code={enrollmentCode || undefined} isLoading={isLoading} />
+          <CodeDisplay code={pairCode || undefined} isLoading={isLoading} />
           <p className="text-md font-light text-muted-foreground">
             Enter this code at{" "}
             <button
-              onClick={handleOpenEnrollPage}
+              onClick={handleOpenPairPage}
               className="text-accent-foreground hover:underline cursor-pointer bg-transparent border-none p-0"
             >
-              labric.co/enroll
+              labric.co/pair
             </button>
           </p>
         </div>
@@ -271,7 +271,7 @@ function Login() {
       <Button
         variant="ghost"
         size="xs"
-        onClick={() => initializeEnrollment()}
+        onClick={() => initializePairing()}
         disabled={isLoading}
       >
         <RefreshCw />

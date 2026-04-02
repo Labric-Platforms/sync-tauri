@@ -74,7 +74,7 @@ src/                        # React frontend
   routes/                   # File-based routing (TanStack Router)
     __root.tsx              # Root layout, theme, auth check
     index.tsx               # Redirects to dashboard
-    login.tsx               # Device enrollment flow
+    login.tsx               # Device pairing flow
     _protected/
       route.tsx             # Auth guard layout
       dashboard.tsx         # Main file watcher dashboard
@@ -94,9 +94,9 @@ src-tauri/                  # Rust backend
 
 ## Authentication Flow
 
-1. App generates a device fingerprint and requests a 6-digit enrollment code from the server
-2. The code is displayed on the login screen -- user visits `labric.co/enroll` and enters it to link the device
-3. App polls `/api/sync/poll_enrollment` until the code is confirmed, then receives a JWT token
+1. App generates a device fingerprint and requests a 6-digit pairing code from the server
+2. The code is displayed on the login screen -- user visits `labric.co/pair` and enters it to link the device
+3. App polls `/api/sync/poll_pairing` until the code is confirmed, then receives a JWT token
 4. Token is persisted in Tauri Store for subsequent sessions
 
 ## CI/CD
