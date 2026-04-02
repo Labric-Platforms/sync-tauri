@@ -65,6 +65,8 @@ function Login() {
   const [isLoading, setIsLoading] = useState(true);
   const isSigningInRef = useRef(false);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const deviceInfoRef = useRef<DeviceInfo | null>(null);
 
   const navigate = useNavigate();
 
@@ -87,11 +89,14 @@ function Login() {
     checkAuth();
   }, [navigate]);
 
-  // Cleanup interval on unmount
+  // Cleanup intervals on unmount
   useEffect(() => {
     return () => {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
+      }
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
       }
     };
   }, []);
@@ -111,12 +116,24 @@ function Login() {
     try {
       // Get device info
       const info = (await invoke("get_device_info")) as DeviceInfo;
+      deviceInfoRef.current = info;
 
       // Get enrollment code
       await fetchEnrollmentCode(info);
 
       // Start polling for enrollment
       startPolling(info);
+
+      // Auto-refresh code every 14 minutes (codes expire after 15)
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+      refreshIntervalRef.current = setInterval(() => {
+        if (deviceInfoRef.current) {
+          fetchEnrollmentCode(deviceInfoRef.current);
+          toast.info("Pair code refreshed");
+        }
+      }, 14 * 60 * 1000);
 
     } catch (error) {
       console.error('Failed to initialize enrollment:', error);
