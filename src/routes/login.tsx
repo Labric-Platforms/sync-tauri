@@ -131,8 +131,7 @@ function Login() {
       }
       refreshIntervalRef.current = setInterval(() => {
         if (deviceInfoRef.current) {
-          fetchEnrollmentCode(deviceInfoRef.current);
-          toast.info("Pair code refreshed");
+          fetchEnrollmentCode(deviceInfoRef.current, true);
         }
       }, 14 * 60 * 1000);
 
@@ -143,7 +142,7 @@ function Login() {
     }
   };
 
-  const fetchEnrollmentCode = async (deviceInfo: DeviceInfo) => {
+  const fetchEnrollmentCode = async (deviceInfo: DeviceInfo, showToast = false) => {
     try {
       const requestBody: any = {
         hostname: deviceInfo.hostname,
@@ -177,6 +176,7 @@ function Login() {
       
       if (data.success && data.otp_code) {
         setEnrollmentCode(data.otp_code);
+        if (showToast) toast.info("Pair code refreshed");
       } else {
         throw new Error('Invalid response format');
       }
