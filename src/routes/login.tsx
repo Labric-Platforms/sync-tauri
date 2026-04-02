@@ -5,6 +5,8 @@ import { openUrl } from "@tauri-apps/plugin-opener"
 import { fetch } from '@tauri-apps/plugin-http';
 import { toast } from 'sonner'
 import { DeviceInfo } from '@/types'
+import { RefreshCw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import logo from '@/assets/logo.svg'
 import { getToken, setToken, getOrganizationId, setOrganizationId } from '@/lib/store'
 
@@ -19,7 +21,7 @@ interface CodeDigitProps {
 
 const CodeDigit = ({ char, isLoading }: CodeDigitProps) => (
   <span
-    className={`inline-flex w-8 h-10 items-center justify-center border-2 border-muted rounded-lg font-mono text-xl ${
+    className={`inline-flex w-10 h-11 items-center justify-center border-y border-r first:border-l first:rounded-l-xl last:rounded-r-xl font-mono text-xl ${
       isLoading ? "bg-muted animate-pulse" : ""
     }`}
   >
@@ -30,14 +32,22 @@ const CodeDigit = ({ char, isLoading }: CodeDigitProps) => (
 const CodeDisplay = ({ code, isLoading = false }: { code?: string; isLoading?: boolean }) => {
   const displayCode = code || "000000";
   return (
-    <div className="inline-flex items-center gap-2">
-      <span className="inline-flex gap-2">
+    <div
+      className="inline-flex items-center gap-2 cursor-copy"
+      onClick={() => {
+        if (code) {
+          navigator.clipboard.writeText(code);
+          toast.success("Copied to clipboard");
+        }
+      }}
+    >
+      <span className="inline-flex">
         {displayCode.slice(0, 3).split("").map((char, i) => (
           <CodeDigit key={i} char={char} isLoading={isLoading} />
         ))}
       </span>
       <span className="inline-block px-1 font-mono">—</span>
-      <span className="inline-flex gap-2">
+      <span className="inline-flex">
         {displayCode.slice(3).split("").map((char, i) => (
           <CodeDigit key={i} char={char} isLoading={isLoading} />
         ))}
@@ -97,13 +107,13 @@ function Login() {
     try {
       // Get device info
       const info = (await invoke("get_device_info")) as DeviceInfo;
-      
+
       // Get enrollment code
       await fetchEnrollmentCode(info);
-      
+
       // Start polling for enrollment
       startPolling(info);
-      
+
     } catch (error) {
       console.error('Failed to initialize enrollment:', error);
       toast.error('Failed to initialize enrollment');
@@ -184,9 +194,9 @@ function Login() {
           // Sign in with promise toast
           const signInPromise = signIn(data.signin_token, data.organization_id);
           toast.promise(signInPromise, {
-            loading: 'Pairing to your organization...',
-            success: 'Successfully paired device',
-            error: 'Failed to pair device'
+            loading: 'Enrolling to your organization...',
+            success: 'Successfully enrolled device',
+            error: 'Failed to enroll device'
           });
         }
       } catch (error) {
@@ -215,24 +225,38 @@ function Login() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-svh p-6 gap-6">
-      <div className="flex items-center justify-center gap-2">
-        <img src={logo} alt="Labric Sync" className="w-10 h-10" />
-        <h1 className="text-2xl font-semibold">Labric Sync</h1>
-      </div>
+    <div className="flex flex-col items-center h-svh p-6 pb-3">
+      <div className="flex-1 flex flex-col items-center justify-center gap-6">
+        <div className="flex items-center justify-center gap-2">
+          <img src={logo} alt="Labric Sync" className="w-12 h-12" />
+          <h1 className="text-3xl font-semibold">Labric Sync</h1>
+        </div>
 
-      <div className="w-full max-w-sm flex flex-col items-center justify-center gap-4">
-        <CodeDisplay code={enrollmentCode || undefined} isLoading={isLoading} />
-        <p className="text-md text-muted-foreground mb-6">
-          Enter this code at{" "}
-          <button
-            onClick={handleOpenEnrollPage}
-            className="text-info hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
-          >
-            labric.co/enroll
-          </button>
-        </p>
+        <div className="w-full max-w-sm flex flex-col items-center justify-center gap-4 mb-8">
+          <CodeDisplay code={enrollmentCode || undefined} isLoading={isLoading} />
+          <p className="text-md font-light text-muted-foreground">
+            Enter this code at{" "}
+            <button
+              onClick={handleOpenEnrollPage}
+              className="text-accent-foreground hover:underline cursor-pointer bg-transparent border-none p-0"
+            >
+              labric.co/enroll
+            </button>
+          </p>
+        </div>
       </div>
+      <Button
+        variant="ghost"
+        size="xs"
+        onClick={() => {
+          setIsLoading(true);
+          initializeEnrollment();
+        }}
+        disabled={isLoading}
+      >
+        <RefreshCw />
+        Refresh pair code
+      </Button>
     </div>
   );
 }
