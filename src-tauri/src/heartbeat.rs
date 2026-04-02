@@ -108,7 +108,7 @@ pub async fn start_heartbeat(
                                         cfg.token = new_token.clone();
                                     }
                                 }
-                                let _ = app_handle_clone.emit("token_refreshed", new_token.as_str());
+
                             }
                             Err(e) => {
                                 log::error!("Failed to persist rotated token: {e}");
