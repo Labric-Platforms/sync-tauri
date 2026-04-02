@@ -26,6 +26,7 @@ pub struct HeartbeatResponse {
     first_seen: String,
     last_seen: String,
     app_version: String,
+    #[serde(skip_serializing)]
     new_token: Option<String>,
 }
 
@@ -94,19 +95,24 @@ pub async fn start_heartbeat(
                     // Handle token rotation
                     if let Some(ref new_token) = response.new_token {
                         log::info!("Received rotated token from server, updating store");
-                        if let Ok(store) = app_handle_clone.store(SETTINGS_STORE_FILENAME) {
-                            store.set(
-                                "token",
-                                serde_json::Value::String(new_token.clone()),
-                            );
-                            // Update the in-memory config so future heartbeats use the new token
-                            {
-                                let mut state = heartbeat_state_clone.lock().await;
-                                if let Some(ref mut cfg) = *state {
-                                    cfg.token = new_token.clone();
+                        match app_handle_clone.store(SETTINGS_STORE_FILENAME) {
+                            Ok(store) => {
+                                store.set(
+                                    "token",
+                                    serde_json::Value::String(new_token.clone()),
+                                );
+                                // Update the in-memory config so future heartbeats use the new token
+                                {
+                                    let mut state = heartbeat_state_clone.lock().await;
+                                    if let Some(ref mut cfg) = *state {
+                                        cfg.token = new_token.clone();
+                                    }
                                 }
+                                let _ = app_handle_clone.emit("token_refreshed", new_token.as_str());
                             }
-                            let _ = app_handle_clone.emit("token_refreshed", new_token.as_str());
+                            Err(e) => {
+                                log::error!("Failed to persist rotated token: {e}");
+                            }
                         }
                     }
 
