@@ -379,7 +379,7 @@ export default function Simple() {
           <>
             <div
               ref={logsRef}
-              className="sticky top-0 m-0 space-y-3 my-2 pb-2 z-40"
+              className="sticky top-0 m-0 space-y-3 my-2 py-2 z-40"
             >
               <div className="relative rounded-full bg-background">
                 <div className="flex flex-col border dark:border-none rounded-full px-4 py-3 shadow-sm dark:bg-input/30">
