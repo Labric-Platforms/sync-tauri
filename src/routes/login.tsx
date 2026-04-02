@@ -113,6 +113,7 @@ function Login() {
   };
 
   const initializeEnrollment = async () => {
+    setIsLoading(true);
     try {
       // Get device info
       const info = (await invoke("get_device_info")) as DeviceInfo;
@@ -270,10 +271,7 @@ function Login() {
       <Button
         variant="ghost"
         size="xs"
-        onClick={() => {
-          setIsLoading(true);
-          initializeEnrollment();
-        }}
+        onClick={() => initializeEnrollment()}
         disabled={isLoading}
       >
         <RefreshCw />
