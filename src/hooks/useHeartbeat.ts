@@ -37,14 +37,16 @@ export function useHeartbeat(url: string) {
         setHeartbeatState(prev => ({ ...prev, is_loading: true, error: null }));
         
         // Start the service and listen for updates simultaneously
-        const [, unlistenFn] = await Promise.all([
+        const [, unlistenStatus] = await Promise.all([
           invoke('start_heartbeat_service', { url, token }),
           listen<HeartbeatStatus>('heartbeat_status', (event) => {
             setHeartbeatState(event.payload);
-          })
+          }),
         ]);
 
-        unlisten = unlistenFn;
+        unlisten = () => {
+          unlistenStatus();
+        };
         // Set loading to false once service is started, events will update with actual status
         setHeartbeatState(prev => ({ ...prev, is_loading: false }));
         console.log('Heartbeat service initialized successfully');
