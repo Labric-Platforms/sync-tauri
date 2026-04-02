@@ -2,11 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, MissedTickBehavior};
 
 use crate::http_client::{check_response, SharedHttpClient};
+
+const SETTINGS_STORE_FILENAME: &str = "settings.json";
 
 const HEARTBEAT_INTERVAL_SECS: u64 = 30;
 const OFFLINE_STATUS: &str = "offline";
@@ -23,6 +26,7 @@ pub struct HeartbeatResponse {
     first_seen: String,
     last_seen: String,
     app_version: String,
+    new_token: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -86,6 +90,26 @@ pub async fn start_heartbeat(
             let status = match result {
                 Ok(response) => {
                     log::info!("Heartbeat successful");
+
+                    // Handle token rotation
+                    if let Some(ref new_token) = response.new_token {
+                        log::info!("Received rotated token from server, updating store");
+                        if let Ok(store) = app_handle_clone.store(SETTINGS_STORE_FILENAME) {
+                            store.set(
+                                "token",
+                                serde_json::Value::String(new_token.clone()),
+                            );
+                            // Update the in-memory config so future heartbeats use the new token
+                            {
+                                let mut state = heartbeat_state_clone.lock().await;
+                                if let Some(ref mut cfg) = *state {
+                                    cfg.token = new_token.clone();
+                                }
+                            }
+                            let _ = app_handle_clone.emit("token_refreshed", new_token.as_str());
+                        }
+                    }
+
                     HeartbeatStatus {
                         status: Some(response),
                         is_loading: false,
