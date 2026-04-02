@@ -142,7 +142,7 @@ function Login() {
     }
   };
 
-  const fetchEnrollmentCode = async (deviceInfo: DeviceInfo, showToast = false) => {
+  const fetchEnrollmentCode = async (deviceInfo: DeviceInfo, isAutoRefresh = false) => {
     try {
       const requestBody: any = {
         hostname: deviceInfo.hostname,
@@ -176,7 +176,7 @@ function Login() {
       
       if (data.success && data.otp_code) {
         setEnrollmentCode(data.otp_code);
-        if (showToast) toast.info("Pair code refreshed");
+        if (isAutoRefresh) toast.info("Pair code refreshed");
       } else {
         throw new Error('Invalid response format');
       }
@@ -184,7 +184,7 @@ function Login() {
       console.error('Failed to fetch enrollment code:', error);
       toast.error('Failed to fetch enrollment code');
     } finally {
-      setIsLoading(false);
+      if (!isAutoRefresh) setIsLoading(false);
     }
   };
 
