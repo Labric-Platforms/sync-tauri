@@ -34,10 +34,14 @@ const CodeDisplay = ({ code, isLoading = false }: { code?: string; isLoading?: b
   return (
     <div
       className="inline-flex items-center gap-2 cursor-copy"
-      onClick={() => {
+      onClick={async () => {
         if (code) {
-          navigator.clipboard.writeText(code);
-          toast.success("Copied to clipboard");
+          try {
+            await navigator.clipboard.writeText(code);
+            toast.success("Copied to clipboard");
+          } catch {
+            toast.error("Failed to copy");
+          }
         }
       }}
     >
@@ -117,6 +121,7 @@ function Login() {
     } catch (error) {
       console.error('Failed to initialize enrollment:', error);
       toast.error('Failed to initialize enrollment');
+      setIsLoading(false);
     }
   };
 
@@ -194,9 +199,9 @@ function Login() {
           // Sign in with promise toast
           const signInPromise = signIn(data.signin_token, data.organization_id);
           toast.promise(signInPromise, {
-            loading: 'Enrolling to your organization...',
-            success: 'Successfully enrolled device',
-            error: 'Failed to enroll device'
+            loading: 'Pairing to your organization...',
+            success: 'Successfully paired device',
+            error: 'Failed to pair device'
           });
         }
       } catch (error) {
