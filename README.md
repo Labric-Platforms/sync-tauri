@@ -96,7 +96,7 @@ src-tauri/                  # Rust backend
 
 1. App generates a device fingerprint and requests a 6-digit pairing code from the server
 2. The code is displayed on the login screen -- user visits `labric.co/pair` and enters it to link the device
-3. App polls `/api/sync/poll_pairing` until the code is confirmed, then receives a JWT token
+3. App polls `/api/sync/poll-pairing` until the code is confirmed, then receives a JWT token
 4. Token is persisted in Tauri Store for subsequent sessions
 
 ## CI/CD
