@@ -401,7 +401,7 @@ async fn get_presigned_urls_batch(
         .collect();
 
     let token = get_auth_token(app_handle)?;
-    let batch_url = format!("{}/api/sync/get_presigned_batch", config.server_url);
+    let batch_url = format!("{}/api/sync/upload-urls", config.server_url);
 
     debug!(
         "Sending batch request to: {} with {} files",
@@ -493,7 +493,7 @@ async fn update_file_metadata(
     app_handle: &AppHandle,
 ) -> Result<(), String> {
     let token = get_auth_token(app_handle)?;
-    let metadata_url = format!("{}/api/sync/{}/update_metadata", config.server_url, file_id);
+    let metadata_url = format!("{}/api/sync/{}/confirm-upload", config.server_url, file_id);
 
     debug!("Sending metadata update request to: {metadata_url}");
 

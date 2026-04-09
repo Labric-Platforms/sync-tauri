@@ -166,7 +166,7 @@ function Login() {
         // Ignore error, org ID is optional
       }
 
-      const response = await apiCall('get_code', requestBody);
+      const response = await apiCall('get-code', requestBody);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -196,7 +196,7 @@ function Login() {
 
     pollIntervalRef.current = setInterval(async () => {
       try {
-        const response = await apiCall('poll_pairing', {
+        const response = await apiCall('poll-pairing', {
           device_fingerprint: deviceInfo.device_fingerprint
         });
 
