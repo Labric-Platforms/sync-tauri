@@ -260,57 +260,57 @@ export default function SessionContextSheet({ children }: SessionContextSheetPro
               <FieldContent>
                 <FieldLabel>Attach user</FieldLabel>
               </FieldContent>
-              {membersLoading && members.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">Loading members...</p>
-              ) : (
-                <div className="relative" ref={portalContainerRef}>
-                  <Combobox
-                    items={members}
-                    itemToStringLabel={getMemberDisplayName}
-                    isItemEqualToValue={(a, b) => a.user_id === b.user_id}
-                    value={selectedMember}
-                    onValueChange={setSelectedMember}
-                  >
-                    <ComboboxInput placeholder="Search lab members..." showClear />
-                    <ComboboxPrimitive.Portal container={portalContainerRef}>
-                      <ComboboxPrimitive.Positioner
-                        side="bottom"
-                        sideOffset={6}
-                        className="isolate z-50"
-                      >
-                        <ComboboxPrimitive.Popup className="group/combobox-content relative max-h-60 w-(--anchor-width) overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10">
-                          <ComboboxEmpty>No members found.</ComboboxEmpty>
-                          <ComboboxList>
-                            {(member) => (
-                              <ComboboxItem key={member.user_id} value={member}>
-                                <div className="flex items-center gap-3 min-w-0">
-                                  {member.image_url ? (
-                                    <img
-                                      src={member.image_url}
-                                      alt=""
-                                      className="w-7 h-7 rounded-full flex-shrink-0"
-                                    />
-                                  ) : (
-                                    <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                                      <User className="w-4 h-4 text-muted-foreground" />
-                                    </div>
-                                  )}
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-sm truncate">{getMemberDisplayName(member)}</p>
-                                    {getMemberDisplayName(member) !== member.email && (
-                                      <p className="text-xs text-muted-foreground truncate">{member.email}</p>
-                                    )}
+              <div className="relative" ref={portalContainerRef}>
+                <Combobox
+                  items={members}
+                  itemToStringLabel={getMemberDisplayName}
+                  isItemEqualToValue={(a, b) => a.user_id === b.user_id}
+                  value={selectedMember}
+                  onValueChange={setSelectedMember}
+                >
+                  <ComboboxInput
+                    placeholder={membersLoading && members.length === 0 ? "Loading members..." : "Search lab members..."}
+                    showClear
+                    disabled={membersLoading && members.length === 0}
+                  />
+                  <ComboboxPrimitive.Portal container={portalContainerRef}>
+                    <ComboboxPrimitive.Positioner
+                      side="bottom"
+                      sideOffset={6}
+                      className="isolate z-50"
+                    >
+                      <ComboboxPrimitive.Popup className="group/combobox-content relative max-h-60 w-(--anchor-width) overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10">
+                        <ComboboxEmpty>No members found.</ComboboxEmpty>
+                        <ComboboxList>
+                          {(member) => (
+                            <ComboboxItem key={member.user_id} value={member}>
+                              <div className="flex items-center gap-3 min-w-0">
+                                {member.image_url ? (
+                                  <img
+                                    src={member.image_url}
+                                    alt=""
+                                    className="w-7 h-7 rounded-full flex-shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                                    <User className="w-4 h-4 text-muted-foreground" />
                                   </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm truncate">{getMemberDisplayName(member)}</p>
+                                  {getMemberDisplayName(member) !== member.email && (
+                                    <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                                  )}
                                 </div>
-                              </ComboboxItem>
-                            )}
-                          </ComboboxList>
-                        </ComboboxPrimitive.Popup>
-                      </ComboboxPrimitive.Positioner>
-                    </ComboboxPrimitive.Portal>
-                  </Combobox>
-                </div>
-              )}
+                              </div>
+                            </ComboboxItem>
+                          )}
+                        </ComboboxList>
+                      </ComboboxPrimitive.Popup>
+                    </ComboboxPrimitive.Positioner>
+                  </ComboboxPrimitive.Portal>
+                </Combobox>
+              </div>
             </Field>
 
             {/* Metadata key-value pairs */}
