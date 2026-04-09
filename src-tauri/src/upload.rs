@@ -991,7 +991,7 @@ pub async fn get_org_members(
 ) -> Result<Vec<OrgMember>, String> {
     let config = upload_config.lock().clone();
     let token = get_auth_token(&app_handle)?;
-    let url = format!("{}/api/sync/org_members", config.server_url);
+    let url = format!("{}/api/sync/org-members", config.server_url);
 
     let mut request = http_client.get(&url);
     if let Some(ref q) = search {
