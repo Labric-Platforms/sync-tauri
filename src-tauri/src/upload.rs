@@ -401,7 +401,7 @@ async fn get_presigned_urls_batch(
         .collect();
 
     let token = get_auth_token(app_handle)?;
-    let batch_url = format!("{}/api/sync/get_presigned_batch", config.server_url);
+    let batch_url = format!("{}/api/sync/upload-urls", config.server_url);
 
     debug!(
         "Sending batch request to: {} with {} files",

@@ -36,7 +36,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml   # Lint Rust code
 ## Key Patterns
 
 - File watcher uses the `notify` crate (native OS events, not polling)
-- Uploads are batched (max 1000/batch) with presigned URLs from `/api/sync/get_presigned_batch`
+- Uploads are batched (max 1000/batch) with presigned URLs from `/api/sync/upload-urls`
 - CRC32C hashes (base64, big-endian) are used for file deduplication
 - Frontend listens to Rust events: `file_change`, `upload_progress`, `upload_success`, `upload_failed`, `file_upload_status`, `heartbeat_status`
 - Protected routes live under `src/routes/_protected/`
