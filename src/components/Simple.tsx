@@ -18,6 +18,7 @@ import {
   CloudCheck,
   ArrowUp,
   Search,
+  UserIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,9 @@ import {
 import { toast } from "sonner";
 import { FileChangeEvent, FileUploadStatus } from "@/types";
 import { useUploadManager } from "@/hooks/useUploadManager";
+import { useSessionContext } from "@/hooks/useSessionContext";
 import UploadSettingsSheet from "./UploadSettingsDialog";
+import SessionContextSheet from "./SessionContextDialog";
 import { getRecentDirs, pushRecent } from "@/lib/store";
 
 const statusConfig = {
@@ -148,6 +151,7 @@ const FileChangeRow = memo(function FileChangeRow({
 
 export default function Simple() {
   const { progress } = useUploadManager();
+  const { isActive: sessionActive, timeRemaining: sessionTimeRemaining } = useSessionContext();
   const [selectedFolder, setSelectedFolder] = useState("");
   const [fileChanges, setFileChanges] = useState<FileChangeEvent[]>([]);
   // Removed isOnline state as it's no longer needed with Rust backend
@@ -316,7 +320,7 @@ export default function Simple() {
         {/* Folder Selection */}
         {!selectedFolder ? (
           <Button onClick={selectFolder} size="lg" className="w-full rounded-full">
-            Select Folder
+            Select Folder to Sync
           </Button>
         ) : (
           <div className="flex gap-2">
@@ -420,7 +424,7 @@ export default function Simple() {
       </div>
 
       {/* VS Code Style Status Ribbon */}
-      <div className="fixed bottom-0 left-0 right-0 bg-background border-t text-xs px-4 py-0.25 flex items-center justify-between z-50">
+      <div className="fixed bottom-0 left-0 right-0 bg-background border-t text-xs px-4 flex items-center justify-between z-50">
         <div className="flex items-center space-x-4">
           <Tooltip>
             <TooltipTrigger>
@@ -473,6 +477,27 @@ export default function Simple() {
               return <><CloudCheck className="h-3 w-3" /><span>Up to date</span></>;
             })()}
           </span>
+          <SessionContextSheet>
+            {sessionActive ? (
+              <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent text-accent-foreground text-xs">
+                <UserIcon className="w-3 h-3" />
+                <span>Session context applied</span>
+                {sessionTimeRemaining != null && (
+                  <span className="font-mono tabular-nums text-[0.9em]">
+                    {(() => {
+                      const h = Math.floor(sessionTimeRemaining / 3600000);
+                      const m = Math.floor((sessionTimeRemaining % 3600000) / 60000);
+                      return h > 0 ? `${h}h ${m}m` : `${m}m`;
+                    })()}
+                  </span>
+                )}
+              </button>
+            ) : (
+              <button className="hover:bg-muted p-1 rounded">
+                <UserIcon className="w-3 h-3" />
+              </button>
+            )}
+          </SessionContextSheet>
           <UploadSettingsSheet>
             <button className="hover:bg-muted p-1 rounded">
               <Settings2Icon className="w-3 h-3" />

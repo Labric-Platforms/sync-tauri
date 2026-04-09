@@ -5,7 +5,7 @@ use crc32c::crc32c;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use parking_lot::Mutex;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
@@ -99,6 +99,40 @@ pub type UploadQueue = Arc<Mutex<VecDeque<UploadItem>>>;
 pub type UploadConfigState = Arc<Mutex<UploadConfig>>;
 pub type UploadProgressState = Arc<Mutex<UploadProgress>>;
 
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+pub struct SessionContext {
+    pub session_user_id: Option<String>,
+    pub session_metadata: Option<HashMap<String, String>>,
+    pub expires_at: Option<u64>, // Unix timestamp millis
+}
+
+impl SessionContext {
+    /// Returns the active session fields if the session has not expired, or None values if expired.
+    fn active_fields(&self) -> (Option<&String>, Option<&HashMap<String, String>>) {
+        if let Some(expires_at) = self.expires_at {
+            if now_millis() > expires_at {
+                return (None, None);
+            }
+        }
+        (self.session_user_id.as_ref(), self.session_metadata.as_ref())
+    }
+}
+
+pub type SessionContextState = Arc<Mutex<SessionContext>>;
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct OrgMember {
+    #[serde(alias = "userId")]
+    pub user_id: String,
+    #[serde(alias = "firstName")]
+    pub first_name: Option<String>,
+    #[serde(alias = "lastName")]
+    pub last_name: Option<String>,
+    pub email: String,
+    #[serde(alias = "imageUrl")]
+    pub image_url: Option<String>,
+}
+
 // ── API request/response types ──────────────────────────────────────────
 
 #[derive(Serialize, Deserialize)]
@@ -118,6 +152,10 @@ struct FileCheckItem {
 #[derive(Serialize, Deserialize)]
 struct GetPresignedBatchBody {
     files: Vec<FileCheckItem>,
+    #[serde(rename = "sessionUserId", skip_serializing_if = "Option::is_none")]
+    session_user_id: Option<String>,
+    #[serde(rename = "sessionMetadata", skip_serializing_if = "Option::is_none")]
+    session_metadata: Option<HashMap<String, String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -377,6 +415,7 @@ async fn prepare_batch_items(items: Vec<UploadItem>) -> Vec<(PreparedUpload, Fil
 async fn get_presigned_urls_batch(
     prepared: &[(PreparedUpload, FileCheckItem)],
     config: &UploadConfig,
+    session_context: &SessionContext,
     client: &SharedHttpClient,
     app_handle: &AppHandle,
 ) -> Result<Vec<FileCheckResult>, String> {
@@ -409,8 +448,11 @@ async fn get_presigned_urls_batch(
         file_check_items.len()
     );
 
+    let (active_user_id, active_metadata) = session_context.active_fields();
     let mut request = client.post(&batch_url).json(&GetPresignedBatchBody {
         files: file_check_items,
+        session_user_id: active_user_id.cloned(),
+        session_metadata: active_metadata.cloned(),
     });
 
     if let Some(token_str) = &token {
@@ -557,6 +599,7 @@ pub async fn process_upload_queue(
     upload_queue: UploadQueue,
     upload_config: UploadConfigState,
     upload_progress: UploadProgressState,
+    session_context_state: SessionContextState,
     http_client: SharedHttpClient,
     app_handle: AppHandle,
 ) {
@@ -607,9 +650,10 @@ pub async fn process_upload_queue(
             let _ = app_handle.emit("upload_progress", &*progress);
         }
 
-        // Get presigned URLs for the batch
+        // Get presigned URLs for the batch (read session context at request time)
+        let session_context = session_context_state.lock().clone();
         let batch_results =
-            match get_presigned_urls_batch(&prepared, &config, &http_client, &app_handle).await {
+            match get_presigned_urls_batch(&prepared, &config, &session_context, &http_client, &app_handle).await {
                 Ok(results) => results,
                 Err(e) => {
                     error!("Batch presigned request failed: {e}");
@@ -857,4 +901,119 @@ pub async fn trigger_manual_upload(
         &app_handle,
     );
     Ok(format!("File queued for upload: {file_path}"))
+}
+
+// ── Session context commands ───────────────────────────────────────────
+
+const SESSION_CONTEXT_STORE_KEY: &str = "session_context";
+
+#[tauri::command]
+pub fn get_session_context(
+    session_context: tauri::State<'_, SessionContextState>,
+) -> Result<SessionContext, String> {
+    Ok(session_context.lock().clone())
+}
+
+#[tauri::command]
+pub fn set_session_context(
+    context: SessionContext,
+    session_context: tauri::State<'_, SessionContextState>,
+    app_handle: AppHandle,
+) -> Result<String, String> {
+    *session_context.lock() = context.clone();
+
+    // Persist to store
+    if let Ok(store) = app_handle.store(SETTINGS_STORE_FILENAME) {
+        store.set(
+            SESSION_CONTEXT_STORE_KEY,
+            serde_json::to_value(&context).unwrap_or_default(),
+        );
+    }
+
+    Ok("Session context updated".to_string())
+}
+
+#[tauri::command]
+pub fn clear_session_context(
+    session_context: tauri::State<'_, SessionContextState>,
+    app_handle: AppHandle,
+) -> Result<String, String> {
+    *session_context.lock() = SessionContext::default();
+
+    // Clear from store
+    if let Ok(store) = app_handle.store(SETTINGS_STORE_FILENAME) {
+        let _ = store.delete(SESSION_CONTEXT_STORE_KEY);
+    }
+
+    Ok("Session context cleared".to_string())
+}
+
+/// Restore session context from the Tauri Store on startup, clearing it if expired.
+pub fn restore_session_context(app_handle: &AppHandle) -> SessionContext {
+    let store = match app_handle.store(SETTINGS_STORE_FILENAME) {
+        Ok(s) => s,
+        Err(_) => return SessionContext::default(),
+    };
+
+    let ctx: SessionContext = match store.get(SESSION_CONTEXT_STORE_KEY) {
+        Some(value) => match serde_json::from_value(value.clone()) {
+            Ok(ctx) => ctx,
+            Err(_) => return SessionContext::default(),
+        },
+        None => return SessionContext::default(),
+    };
+
+    // If expired, clear from store and return default
+    if let Some(expires_at) = ctx.expires_at {
+        if now_millis() > expires_at {
+            let _ = store.delete(SESSION_CONTEXT_STORE_KEY);
+            return SessionContext::default();
+        }
+    }
+
+    ctx
+}
+
+// ── Org members command ────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize)]
+struct OrgMembersResponse {
+    success: bool,
+    members: Vec<OrgMember>,
+}
+
+#[tauri::command]
+pub async fn get_org_members(
+    search: Option<String>,
+    upload_config: tauri::State<'_, UploadConfigState>,
+    http_client: tauri::State<'_, SharedHttpClient>,
+    app_handle: AppHandle,
+) -> Result<Vec<OrgMember>, String> {
+    let config = upload_config.lock().clone();
+    let token = get_auth_token(&app_handle)?;
+    let url = format!("{}/api/sync/org_members", config.server_url);
+
+    let mut request = http_client.get(&url);
+    if let Some(ref q) = search {
+        if !q.is_empty() {
+            request = request.query(&[("search", q.as_str())]);
+        }
+    }
+    if let Some(token_str) = &token {
+        request = request.header("Authorization", format!("Bearer {token_str}"));
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch org members: {e}"))?;
+
+    let response = check_response(response, "Get org members").await?;
+
+    let body: OrgMembersResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse org members response: {e}"))?;
+
+    Ok(body.members)
 }

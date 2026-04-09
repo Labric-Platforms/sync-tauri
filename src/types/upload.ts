@@ -31,4 +31,18 @@ export interface FileUploadStatus {
   relative_path: string;
   status: 'pending' | 'queued' | 'uploading' | 'uploaded' | 'failed' | 'ignored' | 'directory';
   error?: string;
-} 
+}
+
+export interface SessionContext {
+  session_user_id: string | null;
+  session_metadata: Record<string, string> | null;
+  expires_at: number | null; // Unix timestamp in millis
+}
+
+export interface OrgMember {
+  user_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  image_url: string | null;
+}
