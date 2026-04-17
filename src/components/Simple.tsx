@@ -41,7 +41,7 @@ import { FileChangeEvent, FileUploadStatus } from "@/types";
 import { useUploadManager } from "@/hooks/useUploadManager";
 import { useSessionContext } from "@/hooks/useSessionContext";
 import UploadSettingsSheet from "./UploadSettingsDialog";
-import SessionContextSheet from "./SessionContextDialog";
+import SessionContextSheet from "./session-context-dialog";
 import { getRecentDirs, pushRecent } from "@/lib/store";
 
 const statusConfig = {
