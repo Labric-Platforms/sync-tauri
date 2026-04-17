@@ -37,10 +37,11 @@ fn show_main_window(window: &WebviewWindow) {
 
 mod upload;
 use upload::{
-    add_to_upload_queue_sync, add_to_upload_queue_with_event_type, clear_upload_queue,
-    get_queue_size, get_upload_config, get_upload_progress, process_upload_queue,
-    set_upload_config, trigger_manual_upload, UploadConfig, UploadConfigState, UploadProgress,
-    UploadProgressState, UploadQueue,
+    add_to_upload_queue_sync, add_to_upload_queue_with_event_type, clear_session_context,
+    clear_upload_queue, get_org_members, get_queue_size, get_session_context, get_upload_config,
+    get_upload_progress, process_upload_queue, restore_session_context, set_session_context,
+    set_upload_config, trigger_manual_upload, SessionContext, SessionContextState, UploadConfig,
+    UploadConfigState, UploadProgress, UploadProgressState, UploadQueue,
 };
 
 mod heartbeat;
@@ -415,6 +416,7 @@ pub fn run() {
         in_flight: 0,
         current_uploading: None,
     }));
+    let session_context: SessionContextState = Arc::new(Mutex::new(SessionContext::default()));
     let http_client = create_shared_client();
     let heartbeat_state: HeartbeatState = Arc::new(tokio::sync::Mutex::new(None));
     let heartbeat_status_state: HeartbeatStatusState =
@@ -440,6 +442,7 @@ pub fn run() {
         .manage(upload_queue.clone())
         .manage(upload_config.clone())
         .manage(upload_progress.clone())
+        .manage(session_context.clone())
         .manage(heartbeat_state.clone())
         .manage(heartbeat_status_state.clone())
         .manage(heartbeat_task_state.clone())
@@ -456,13 +459,22 @@ pub fn run() {
             start_heartbeat_service,
             stop_heartbeat_service,
             get_heartbeat_status_command,
-            update_heartbeat_token
+            update_heartbeat_token,
+            get_session_context,
+            set_session_context,
+            clear_session_context,
+            get_org_members
         ])
         .setup(move |app| {
+            // Restore session context from store
+            let restored_ctx = restore_session_context(app.handle());
+            *session_context.lock() = restored_ctx;
+
             // Start the upload processor in the background
             let upload_queue_clone = upload_queue.clone();
             let upload_config_clone = upload_config.clone();
             let upload_progress_clone = upload_progress.clone();
+            let session_context_clone = session_context.clone();
             let http_client_clone = http_client.clone();
             let app_handle = app.handle().clone();
 
@@ -471,6 +483,7 @@ pub fn run() {
                     upload_queue_clone,
                     upload_config_clone,
                     upload_progress_clone,
+                    session_context_clone,
                     http_client_clone,
                     app_handle,
                 )
