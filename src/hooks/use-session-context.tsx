@@ -1,16 +1,31 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { SessionContext, OrgMember } from "@/types";
 
-export function useSessionContext() {
+interface SessionContextValue {
+  context: SessionContext | null;
+  members: OrgMember[];
+  isActive: boolean;
+  timeRemaining: number | null;
+  isLoading: boolean;
+  membersLoading: boolean;
+  error: string | null;
+  loadMembers: (search?: string) => Promise<void>;
+  updateSessionContext: (ctx: SessionContext) => Promise<void>;
+  clearContext: () => Promise<void>;
+}
+
+const SessionContextReact = createContext<SessionContextValue | null>(null);
+
+export function SessionContextProvider({ children }: { children: ReactNode }) {
   const [context, setContext] = useState<SessionContext | null>(null);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Compute if session is active (has either operator or metadata, and not expired)
   const hasContent =
     context != null &&
     (context.session_user_id != null ||
@@ -19,7 +34,6 @@ export function useSessionContext() {
     hasContent &&
     (context!.expires_at == null || context!.expires_at > Date.now());
 
-  // Tick every minute so the countdown updates
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!isActive || context?.expires_at == null) return;
@@ -27,13 +41,12 @@ export function useSessionContext() {
     return () => clearInterval(id);
   }, [isActive, context?.expires_at]);
 
-  // Time remaining in ms
   const timeRemaining =
     isActive && context?.expires_at != null
       ? Math.max(0, context.expires_at - Date.now())
       : null;
 
-  // Load initial context
+  // Initial fetch + subscribe to backend changes
   useEffect(() => {
     (async () => {
       try {
@@ -46,30 +59,33 @@ export function useSessionContext() {
         setIsLoading(false);
       }
     })();
+
+    const unlisten = listen<SessionContext>("session_context_changed", (event) => {
+      setContext(event.payload);
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, []);
 
-  // Auto-clear on expiry
+  // Auto-clear on expiry — backend command will emit, which updates state
   useEffect(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+    if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current);
 
     if (context?.expires_at != null && hasContent) {
       const remaining = context.expires_at - Date.now();
       if (remaining <= 0) {
-        // Already expired, clear
-        invoke("clear_session_context").then(() => {
-          setContext({ session_user_id: null, session_metadata: null, expires_at: null });
-        });
+        invoke("clear_session_context").catch(() => {});
       } else {
-        timerRef.current = setTimeout(() => {
-          invoke("clear_session_context").then(() => {
-            setContext({ session_user_id: null, session_metadata: null, expires_at: null });
-          });
+        expiryTimerRef.current = setTimeout(() => {
+          invoke("clear_session_context").catch(() => {});
         }, remaining);
       }
     }
 
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current);
     };
   }, [context?.expires_at, hasContent]);
 
@@ -90,7 +106,6 @@ export function useSessionContext() {
   const updateSessionContext = useCallback(async (ctx: SessionContext) => {
     try {
       await invoke("set_session_context", { context: ctx });
-      setContext(ctx);
       setError(null);
     } catch (err) {
       setError(err as string);
@@ -101,7 +116,6 @@ export function useSessionContext() {
   const clearContext = useCallback(async () => {
     try {
       await invoke("clear_session_context");
-      setContext({ session_user_id: null, session_metadata: null, expires_at: null });
       setError(null);
     } catch (err) {
       setError(err as string);
@@ -109,7 +123,7 @@ export function useSessionContext() {
     }
   }, []);
 
-  return {
+  const value: SessionContextValue = {
     context,
     members,
     isActive,
@@ -121,4 +135,14 @@ export function useSessionContext() {
     updateSessionContext,
     clearContext,
   };
+
+  return <SessionContextReact.Provider value={value}>{children}</SessionContextReact.Provider>;
+}
+
+export function useSessionContext() {
+  const ctx = useContext(SessionContextReact);
+  if (!ctx) {
+    throw new Error("useSessionContext must be used within a SessionContextProvider");
+  }
+  return ctx;
 }

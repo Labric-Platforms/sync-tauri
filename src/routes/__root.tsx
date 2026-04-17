@@ -4,6 +4,7 @@ import { useAppUpdater } from "@/hooks/useAppUpdater";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
+import { SessionContextProvider } from "@/hooks/use-session-context";
 
 export const Route = createRootRoute({
   component: () => {
@@ -13,12 +14,14 @@ export const Route = createRootRoute({
     return (
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <TooltipProvider>
-            {/* child routes render here */}
-            <Outlet />
+            <SessionContextProvider>
+              {/* child routes render here */}
+              <Outlet />
 
-            {/* devtools are auto-stripped in prod builds */}
-            {/* {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />} */}
-            <Toaster />
+              {/* devtools are auto-stripped in prod builds */}
+              {/* {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />} */}
+              <Toaster />
+            </SessionContextProvider>
           </TooltipProvider>
         </ThemeProvider>
     );

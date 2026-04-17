@@ -39,7 +39,7 @@ import {
 import { toast } from "sonner";
 import { FileChangeEvent, FileUploadStatus } from "@/types";
 import { useUploadManager } from "@/hooks/useUploadManager";
-import { useSessionContext } from "@/hooks/useSessionContext";
+import { useSessionContext } from "@/hooks/use-session-context";
 import UploadSettingsSheet from "./UploadSettingsDialog";
 import SessionContextSheet from "./session-context-dialog";
 import { getRecentDirs, pushRecent } from "@/lib/store";
@@ -479,9 +479,9 @@ export default function Simple() {
           </span>
           <SessionContextSheet>
             {sessionActive ? (
-              <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent text-accent-foreground text-xs">
+              <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent-foreground/10 text-accent-foreground text-xs">
                 <UserIcon className="w-3 h-3" />
-                <span>Session context applied</span>
+                <span>Session active</span>
                 {sessionTimeRemaining != null && (
                   <span className="font-mono tabular-nums text-[0.9em]">
                     {(() => {

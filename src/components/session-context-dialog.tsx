@@ -32,7 +32,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { toast } from "sonner";
-import { useSessionContext } from "@/hooks/useSessionContext";
+import { useSessionContext } from "@/hooks/use-session-context";
 import { OrgMember } from "@/types";
 import {
   Select,

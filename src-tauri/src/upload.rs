@@ -938,12 +938,15 @@ pub fn clear_session_context(
     session_context: tauri::State<'_, SessionContextState>,
     app_handle: AppHandle,
 ) -> Result<String, String> {
-    *session_context.lock() = SessionContext::default();
+    let cleared = SessionContext::default();
+    *session_context.lock() = cleared.clone();
 
     // Clear from store
     if let Ok(store) = app_handle.store(SETTINGS_STORE_FILENAME) {
         let _ = store.delete(SESSION_CONTEXT_STORE_KEY);
     }
+
+    let _ = app_handle.emit("session_context_changed", &cleared);
 
     Ok("Session context cleared".to_string())
 }
