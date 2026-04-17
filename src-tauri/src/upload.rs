@@ -990,7 +990,8 @@ pub async fn get_org_members(
     app_handle: AppHandle,
 ) -> Result<Vec<OrgMember>, String> {
     let config = upload_config.lock().clone();
-    let token = get_auth_token(&app_handle)?;
+    let token = get_auth_token(&app_handle)?
+        .ok_or_else(|| "Not authenticated".to_string())?;
     let url = format!("{}/api/sync/org-members", config.server_url);
 
     let mut request = http_client.get(&url);
@@ -999,9 +1000,7 @@ pub async fn get_org_members(
             request = request.query(&[("search", q.as_str())]);
         }
     }
-    if let Some(token_str) = &token {
-        request = request.header("Authorization", format!("Bearer {token_str}"));
-    }
+    request = request.header("Authorization", format!("Bearer {token}"));
 
     let response = request
         .send()

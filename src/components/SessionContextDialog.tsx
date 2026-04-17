@@ -41,7 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, User, Clock, X } from "lucide-react";
+import { Plus, Trash2, User, Clock } from "lucide-react";
 
 interface SessionContextSheetProps {
   children: React.ReactNode;
@@ -91,7 +91,8 @@ export default function SessionContextSheet({ children }: SessionContextSheetPro
 
   // Draft state
   const [selectedMember, setSelectedMember] = useState<OrgMember | null>(null);
-  const [metadata, setMetadata] = useState<{ key: string; value: string }[]>([]);
+  const nextIdRef = useRef(0);
+  const [metadata, setMetadata] = useState<{ id: number; key: string; value: string }[]>([]);
   const [durationValue, setDurationValue] = useState("8");
   const [durationUnit, setDurationUnit] = useState<DurationUnit>("hours");
 
@@ -113,30 +114,38 @@ export default function SessionContextSheet({ children }: SessionContextSheetPro
   }, [isActive, selectedMember, metadata, durationValue, durationUnit]);
 
   const resetDraft = useCallback(() => {
+    let newMemberId: string | null = null;
+    let newMetadata: { key: string; value: string }[] = [];
+    let newDurationValue = "8";
+    let newDurationUnit: DurationUnit = "hours";
+
     if (context) {
       const match = members.find((m) => m.user_id === context.session_user_id) ?? null;
       setSelectedMember(match);
+      newMemberId = match?.user_id ?? null;
       const entries = context.session_metadata
-        ? Object.entries(context.session_metadata).map(([key, value]) => ({ key, value }))
+        ? Object.entries(context.session_metadata).map(([key, value]) => ({ id: nextIdRef.current++, key, value }))
         : [];
       setMetadata(entries);
+      newMetadata = entries;
       if (context.expires_at) {
         const remaining = context.expires_at - Date.now();
         if (remaining > 0) {
-          // Convert remaining ms back to a friendly value/unit
           const days = remaining / UNIT_TO_MS.days;
           const hours = remaining / UNIT_TO_MS.hours;
           const minutes = remaining / UNIT_TO_MS.minutes;
           if (days >= 1 && days === Math.round(days)) {
-            setDurationValue(String(Math.round(days)));
-            setDurationUnit("days");
+            newDurationValue = String(Math.round(days));
+            newDurationUnit = "days";
           } else if (hours >= 1) {
-            setDurationValue(String(Math.round(hours * 10) / 10));
-            setDurationUnit("hours");
+            newDurationValue = String(Math.round(hours * 10) / 10);
+            newDurationUnit = "hours";
           } else {
-            setDurationValue(String(Math.round(minutes)));
-            setDurationUnit("minutes");
+            newDurationValue = String(Math.round(minutes));
+            newDurationUnit = "minutes";
           }
+          setDurationValue(newDurationValue);
+          setDurationUnit(newDurationUnit);
         }
       }
     } else {
@@ -145,6 +154,14 @@ export default function SessionContextSheet({ children }: SessionContextSheetPro
       setDurationValue("8");
       setDurationUnit("hours");
     }
+
+    // Snapshot initial state immediately from local vars (not stale closure values)
+    initialDraftRef.current = {
+      memberId: newMemberId,
+      metadata: JSON.stringify(newMetadata.map((r) => [r.key.trim(), r.value]).filter(([k]) => k)),
+      durationValue: newDurationValue,
+      durationUnit: newDurationUnit,
+    };
   }, [context, members]);
 
   useEffect(() => {
@@ -160,19 +177,8 @@ export default function SessionContextSheet({ children }: SessionContextSheetPro
     }
   }, [open, members, resetDraft]);
 
-  // Capture snapshot after draft is reset
-  useEffect(() => {
-    if (!open) return;
-    initialDraftRef.current = {
-      memberId: selectedMember?.user_id ?? null,
-      metadata: JSON.stringify(metadata.map((r) => [r.key.trim(), r.value]).filter(([k]) => k)),
-      durationValue,
-      durationUnit,
-    };
-  }, [open, members]); // only on sheet open + members loaded
-
   const handleAddMetadataRow = () => {
-    setMetadata((prev) => [...prev, { key: "", value: "" }]);
+    setMetadata((prev) => [...prev, { id: nextIdRef.current++, key: "", value: "" }]);
   };
 
   const handleRemoveMetadataRow = (index: number) => {
@@ -185,14 +191,27 @@ export default function SessionContextSheet({ children }: SessionContextSheetPro
 
   const handleSave = async () => {
     const metadataObj: Record<string, string> = {};
+    const seenKeys = new Set<string>();
     for (const row of metadata) {
       const key = row.key.trim();
-      if (key) metadataObj[key] = row.value;
+      if (key) {
+        if (seenKeys.has(key)) {
+          toast.error(`Duplicate metadata key: "${key}"`);
+          return;
+        }
+        seenKeys.add(key);
+        metadataObj[key] = row.value;
+      }
     }
 
     const hasMetadata = Object.keys(metadataObj).length > 0;
     if (!selectedMember && !hasMetadata) {
       toast.error("Please select an operator or add metadata");
+      return;
+    }
+
+    if (durationMs <= 0) {
+      toast.error("Session duration must be greater than zero");
       return;
     }
 
@@ -221,8 +240,6 @@ export default function SessionContextSheet({ children }: SessionContextSheetPro
       toast.error("Failed to end session");
     }
   };
-
-  const selectedMemberName = selectedMember ? getMemberDisplayName(selectedMember) : null;
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -321,7 +338,7 @@ export default function SessionContextSheet({ children }: SessionContextSheetPro
               </FieldContent>
               <div className="space-y-2">
                 {metadata.map((row, index) => (
-                  <div key={index} className="flex gap-2 items-center">
+                  <div key={row.id} className="flex gap-2 items-center">
                     <Input
                       placeholder="Key"
                       value={row.key}
