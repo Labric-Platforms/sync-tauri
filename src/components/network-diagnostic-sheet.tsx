@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Check, X, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -67,19 +67,25 @@ export function NetworkDiagnosticSheet({ open, onOpenChange }: Props) {
   const [isRunning, setIsRunning] = useState(false)
   const [result, setResult] = useState<NetworkDiagnostics | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const requestIdRef = useRef(0)
 
   const runDiagnostic = useCallback(async () => {
+    const myId = ++requestIdRef.current
     setIsRunning(true)
     setError(null)
     try {
       const res = await invoke<NetworkDiagnostics>('run_network_diagnostics', {
         serverUrl: import.meta.env.VITE_SERVER_URL,
       })
+      if (myId !== requestIdRef.current) return
       setResult(res)
     } catch (e) {
+      if (myId !== requestIdRef.current) return
       setError(String(e))
     } finally {
-      setIsRunning(false)
+      if (myId === requestIdRef.current) {
+        setIsRunning(false)
+      }
     }
   }, [])
 
@@ -88,8 +94,10 @@ export function NetworkDiagnosticSheet({ open, onOpenChange }: Props) {
       runDiagnostic()
     }
     if (!open) {
+      requestIdRef.current++
       setResult(null)
       setError(null)
+      setIsRunning(false)
     }
   }, [open, result, isRunning, runDiagnostic])
 

@@ -42,10 +42,8 @@ fn classify_reqwest_error(e: &reqwest::Error) -> String {
     }
     let chain = describe_error(e).to_lowercase();
     if chain.contains("certificate")
-        || chain.contains(" tls ")
-        || chain.contains("tls ")
-        || chain.contains(" ssl ")
-        || chain.contains("ssl ")
+        || chain.contains("tls")
+        || chain.contains("ssl")
         || chain.contains("handshake")
     {
         tags.push("tls");
