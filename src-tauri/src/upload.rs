@@ -930,6 +930,8 @@ pub fn set_session_context(
         );
     }
 
+    let _ = app_handle.emit("session_context_changed", &context);
+
     Ok("Session context updated".to_string())
 }
 

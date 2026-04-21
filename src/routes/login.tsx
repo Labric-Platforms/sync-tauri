@@ -5,10 +5,11 @@ import { openUrl } from "@tauri-apps/plugin-opener"
 import { fetch } from '@tauri-apps/plugin-http';
 import { toast } from 'sonner'
 import { DeviceInfo } from '@/types'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, Stethoscope } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import logo from '@/assets/logo.svg'
 import { getToken, setToken, getOrganizationId, setOrganizationId } from '@/lib/store'
+import { NetworkDiagnosticSheet } from '@/components/network-diagnostic-sheet'
 
 export const Route = createFileRoute('/login')({
   component: Login,
@@ -63,6 +64,8 @@ const CodeDisplay = ({ code, isLoading = false }: { code?: string; isLoading?: b
 function Login() {
   const [pairCode, setPairCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchFailed, setFetchFailed] = useState(false);
+  const [diagnosticOpen, setDiagnosticOpen] = useState(false);
   const isSigningInRef = useRef(false);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -176,13 +179,20 @@ function Login() {
 
       if (data.success && data.otp_code) {
         setPairCode(data.otp_code);
+        setFetchFailed(false);
         if (isAutoRefresh) toast.info("Pair code refreshed");
       } else {
         throw new Error('Invalid response format');
       }
     } catch (error) {
       console.error('Failed to fetch pair code:', error);
-      toast.error('Failed to fetch pair code');
+      toast.error('Failed to fetch pair code', {
+        action: {
+          label: 'Run diagnostic',
+          onClick: () => setDiagnosticOpen(true),
+        },
+      });
+      setFetchFailed(true);
     } finally {
       if (!isAutoRefresh) setIsLoading(false);
     }
@@ -268,15 +278,31 @@ function Login() {
           </p>
         </div>
       </div>
-      <Button
-        variant="ghost"
-        size="xs"
-        onClick={() => initializePairing()}
-        disabled={isLoading}
-      >
-        <RefreshCw />
-        Refresh pair code
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={() => initializePairing()}
+          disabled={isLoading}
+        >
+          <RefreshCw />
+          Refresh pair code
+        </Button>
+        {fetchFailed && (
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => setDiagnosticOpen(true)}
+          >
+            <Stethoscope />
+            Run network diagnostic
+          </Button>
+        )}
+      </div>
+      <NetworkDiagnosticSheet
+        open={diagnosticOpen}
+        onOpenChange={setDiagnosticOpen}
+      />
     </div>
   );
 }

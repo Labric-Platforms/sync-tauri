@@ -50,6 +50,9 @@ use heartbeat::{
     HeartbeatConfig, HeartbeatState, HeartbeatStatus, HeartbeatStatusState, HeartbeatTaskState,
 };
 
+mod diagnostics;
+use diagnostics::run_network_diagnostics;
+
 #[derive(Clone, Serialize, Deserialize)]
 struct FileChangeEvent {
     path: String,
@@ -463,7 +466,8 @@ pub fn run() {
             get_session_context,
             set_session_context,
             clear_session_context,
-            get_org_members
+            get_org_members,
+            run_network_diagnostics
         ])
         .setup(move |app| {
             // Restore session context from store
