@@ -55,58 +55,97 @@ fn classify_reqwest_error(e: &reqwest::Error) -> String {
     }
 }
 
-async fn check_dns(host: &str) -> DiagnosticCheck {
+async fn check_dns(host: &str, port: u16) -> (DiagnosticCheck, Vec<std::net::SocketAddr>) {
     let start = Instant::now();
-    let result = tokio::net::lookup_host((host, 443)).await;
+    // Port is only required by the SocketAddr returned from lookup_host; DNS resolution itself
+    // doesn't use it, so any valid port works here.
+    let result = tokio::net::lookup_host((host, port)).await;
     let duration_ms = start.elapsed().as_millis() as u64;
 
     match result {
         Ok(addrs) => {
-            let ips: Vec<String> = addrs.map(|a| a.ip().to_string()).collect();
+            let addrs: Vec<std::net::SocketAddr> = addrs.collect();
+            let ips: Vec<String> = addrs.iter().map(|a| a.ip().to_string()).collect();
             let detail = if ips.is_empty() {
                 "Resolved but no addresses returned".to_string()
             } else {
                 format!("Resolved to: {}", ips.join(", "))
             };
-            DiagnosticCheck {
+            let check = DiagnosticCheck {
                 name: "dns_resolve".to_string(),
                 label: format!("DNS resolution for {host}"),
                 passed: !ips.is_empty(),
                 duration_ms,
                 detail,
-            }
+            };
+            (check, addrs)
         }
-        Err(e) => DiagnosticCheck {
-            name: "dns_resolve".to_string(),
-            label: format!("DNS resolution for {host}"),
-            passed: false,
-            duration_ms,
-            detail: describe_error(&e),
-        },
+        Err(e) => (
+            DiagnosticCheck {
+                name: "dns_resolve".to_string(),
+                label: format!("DNS resolution for {host}"),
+                passed: false,
+                duration_ms,
+                detail: describe_error(&e),
+            },
+            Vec::new(),
+        ),
     }
 }
 
-async fn check_server_reach(server_url: &str) -> DiagnosticCheck {
-    let client = match reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(10))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            return DiagnosticCheck {
-                name: "server_reach".to_string(),
-                label: "Reach Labric server".to_string(),
-                passed: false,
-                duration_ms: 0,
-                detail: format!("Failed to build HTTP client: {}", describe_error(&e)),
-            };
-        }
-    };
+async fn check_tcp_connect(host: &str, port: u16, addrs: &[std::net::SocketAddr]) -> DiagnosticCheck {
+    let label = format!("TCP connect to {host}:{port}");
+    if addrs.is_empty() {
+        return DiagnosticCheck {
+            name: "tcp_connect".to_string(),
+            label,
+            passed: false,
+            duration_ms: 0,
+            detail: "Skipped: DNS did not resolve any addresses".to_string(),
+        };
+    }
 
+    let start = Instant::now();
+    // Try each resolved address in order; pass on the first success. This mirrors how a
+    // client library would walk the list, and surfaces the case where IPv6 resolves but
+    // only IPv4 is reachable (or vice versa).
+    let mut last_err: Option<String> = None;
+    for addr in addrs {
+        let attempt = tokio::time::timeout(
+            Duration::from_secs(5),
+            tokio::net::TcpStream::connect(addr),
+        )
+        .await;
+        match attempt {
+            Ok(Ok(_)) => {
+                let duration_ms = start.elapsed().as_millis() as u64;
+                return DiagnosticCheck {
+                    name: "tcp_connect".to_string(),
+                    label,
+                    passed: true,
+                    duration_ms,
+                    detail: format!("Connected to {addr}"),
+                };
+            }
+            Ok(Err(e)) => last_err = Some(format!("{addr}: {}", describe_error(&e))),
+            Err(_) => last_err = Some(format!("{addr}: timeout after 5s")),
+        }
+    }
+
+    let duration_ms = start.elapsed().as_millis() as u64;
+    DiagnosticCheck {
+        name: "tcp_connect".to_string(),
+        label,
+        passed: false,
+        duration_ms,
+        detail: last_err.unwrap_or_else(|| "No addresses attempted".to_string()),
+    }
+}
+
+async fn check_server_reach(client: &reqwest::Client, server_url: &str) -> DiagnosticCheck {
     let base = server_url.trim_end_matches('/');
     let start = Instant::now();
-    let result = client.get(base).send().await;
+    let result = client.get(base).timeout(Duration::from_secs(10)).send().await;
     let duration_ms = start.elapsed().as_millis() as u64;
 
     match result {
@@ -114,15 +153,17 @@ async fn check_server_reach(server_url: &str) -> DiagnosticCheck {
             let status = resp.status();
             DiagnosticCheck {
                 name: "server_reach".to_string(),
-                label: "Reach Labric server".to_string(),
+                label: "Labric server responds (HTTPS)".to_string(),
                 passed: !status.is_server_error(),
                 duration_ms,
-                detail: format!("HTTP {status}"),
+                detail: format!(
+                    "HTTP {status} (any non-5xx response means TLS + the server are working)"
+                ),
             }
         }
         Err(e) => DiagnosticCheck {
             name: "server_reach".to_string(),
-            label: "Reach Labric server".to_string(),
+            label: "Labric server responds (HTTPS)".to_string(),
             passed: false,
             duration_ms,
             detail: format!("{}{}", classify_reqwest_error(&e), describe_error(&e)),
@@ -130,25 +171,8 @@ async fn check_server_reach(server_url: &str) -> DiagnosticCheck {
     }
 }
 
-async fn check_pair_endpoint(server_url: &str) -> DiagnosticCheck {
+async fn check_pair_endpoint(client: &reqwest::Client, server_url: &str) -> DiagnosticCheck {
     let url = format!("{}/api/sync/get-code", server_url.trim_end_matches('/'));
-    let client = match reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(15))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            return DiagnosticCheck {
-                name: "pair_endpoint".to_string(),
-                label: "Pair code endpoint reachable".to_string(),
-                passed: false,
-                duration_ms: 0,
-                detail: format!("Failed to build HTTP client: {}", describe_error(&e)),
-            };
-        }
-    };
-
     let start = Instant::now();
     // Intentionally send an empty body — we only care whether the request reaches the server.
     // A 4xx response still proves connectivity.
@@ -156,6 +180,7 @@ async fn check_pair_endpoint(server_url: &str) -> DiagnosticCheck {
         .post(&url)
         .header("Content-Type", "application/json")
         .body("{}")
+        .timeout(Duration::from_secs(15))
         .send()
         .await;
     let duration_ms = start.elapsed().as_millis() as u64;
@@ -210,17 +235,28 @@ pub async fn run_network_diagnostics(
         .host_str()
         .ok_or_else(|| format!("Server URL has no host: {server_url}"))?
         .to_string();
+    let port = parsed.port_or_known_default().unwrap_or(443);
+    // Strip any path/query/fragment so credentials or tokens never land in the copied report.
+    let sanitized_url = format!("{}://{}", parsed.scheme(), parsed.authority());
 
-    let (dns, reach, pair) = tokio::join!(
-        check_dns(&host),
-        check_server_reach(&server_url),
-        check_pair_endpoint(&server_url),
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", describe_error(&e)))?;
+
+    // DNS runs first because the TCP check reuses its resolved addresses. The two HTTPS
+    // checks run in parallel alongside TCP.
+    let (dns_check, addrs) = check_dns(&host, port).await;
+    let (tcp, reach, pair) = tokio::join!(
+        check_tcp_connect(&host, port, &addrs),
+        check_server_reach(&client, &server_url),
+        check_pair_endpoint(&client, &server_url),
     );
 
     Ok(NetworkDiagnostics {
-        checks: vec![dns, reach, pair],
+        checks: vec![dns_check, tcp, reach, pair],
         proxy_env: collect_proxy_env(),
-        server_url,
+        server_url: sanitized_url,
         app_version: app_handle.package_info().version.to_string(),
         timestamp: chrono::Utc::now().to_rfc3339(),
     })

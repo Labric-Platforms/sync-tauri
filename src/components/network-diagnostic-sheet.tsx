@@ -90,16 +90,15 @@ export function NetworkDiagnosticSheet({ open, onOpenChange }: Props) {
   }, [])
 
   useEffect(() => {
-    if (open && !result && !isRunning) {
-      runDiagnostic()
-    }
     if (!open) {
       requestIdRef.current++
       setResult(null)
       setError(null)
       setIsRunning(false)
+      return
     }
-  }, [open, result, isRunning, runDiagnostic])
+    runDiagnostic()
+  }, [open, runDiagnostic])
 
   const handleCopy = async () => {
     if (!result) return

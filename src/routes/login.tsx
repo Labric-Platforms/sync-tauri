@@ -92,6 +92,19 @@ function Login() {
     checkAuth();
   }, [navigate]);
 
+  // Global hotkey to open the network diagnostic: Cmd+Shift+D on macOS, Ctrl+Shift+D on Windows/Linux.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        setDiagnosticOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   // Cleanup intervals on unmount
   useEffect(() => {
     return () => {
