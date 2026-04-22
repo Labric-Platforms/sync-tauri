@@ -1,6 +1,6 @@
 [package]
 name = "labric-sync"
-version = "0.1.12"
+version = "0.1.13"
 description = "Labric Sync desktop app"
 authors = ["Labric"]
 edition = "2021"
@@ -15,6 +15,7 @@ name = "labric_sync_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
+dotenvy = "0.15.7"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]

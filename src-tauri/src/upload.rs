@@ -57,7 +57,9 @@ impl Default for UploadConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            server_url: "https://platform.labric.co".to_string(),
+            server_url: option_env!("VITE_SERVER_URL")
+                .unwrap_or("http://localhost:3000")
+                .to_string(),
             ignored_patterns: vec![
                 "*.tmp".to_string(),
                 ".git/**".to_string(),
@@ -929,6 +931,8 @@ pub fn set_session_context(
             serde_json::to_value(&context).unwrap_or_default(),
         );
     }
+
+    let _ = app_handle.emit("session_context_changed", &context);
 
     Ok("Session context updated".to_string())
 }
