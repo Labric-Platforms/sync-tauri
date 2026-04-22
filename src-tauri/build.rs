@@ -1,4 +1,8 @@
 fn main() {
+    println!("cargo:rerun-if-changed=../.env.local");
+    println!("cargo:rerun-if-changed=../.env.production");
+    println!("cargo:rerun-if-env-changed=VITE_SERVER_URL");
+
     dotenvy::from_path("../.env.local")
         .or_else(|_| dotenvy::from_path("../.env.production"))
         .ok();
